@@ -1,1 +1,2 @@
 com.baeldung.javac.SampleJavacPlugin
+ch.usi.si.codelounge.jsicko.plugin.JSickoContractCompiler
