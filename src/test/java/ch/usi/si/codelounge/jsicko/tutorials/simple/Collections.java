@@ -1,14 +1,11 @@
 package ch.usi.si.codelounge.jsicko.tutorials.simple;
 
 import ch.usi.si.codelounge.jsicko.Contract;
-import com.google.common.collect.Comparators;
-import com.google.common.collect.Ordering;
-import org.jooq.lambda.Seq;
+import static ch.usi.si.codelounge.jsicko.ContractUtils.*;
+
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Spliterator;
-import java.util.function.Predicate;
 
 public abstract class Collections implements Contract<Collections> {
 
@@ -42,15 +39,12 @@ public abstract class Collections implements Contract<Collections> {
 
     @Pure
     private static <T extends Comparable<? super T>> boolean returns_same_elements_contained(List<T> returns, List<T> list) {
-        return list.stream().allMatch((T elem) -> {
-                Predicate<T> equalityFunction = (T otherElem) -> otherElem.equals(elem);
-                return returns.stream().filter(equalityFunction).count() == list.stream().filter(equalityFunction).count();
-        });
+        return forAll(list, (T elem) -> count(returns, e -> e.equals(elem)) == count(list,e -> e.equals(elem)));
     }
 
     @Pure
     private static <T extends Comparable<? super T>> boolean returns_collection_sorted(List<T> returns) {
-        return Ordering.natural().isOrdered(returns);
+        return isSorted(returns);
     }
 
 }
