@@ -1,4 +1,4 @@
-package ch.usi.si.codelounge.jsicko.utils;
+package ch.usi.si.codelounge.jsicko.plugin.utils;
 
 import com.esotericsoftware.kryo.Kryo;
 

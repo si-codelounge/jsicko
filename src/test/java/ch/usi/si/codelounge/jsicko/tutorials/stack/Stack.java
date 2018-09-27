@@ -1,6 +1,7 @@
 package ch.usi.si.codelounge.jsicko.tutorials.stack;
 
 import ch.usi.si.codelounge.jsicko.Contract;
+import static ch.usi.si.codelounge.jsicko.ContractUtils.*;
 
 import java.util.stream.IntStream;
 
@@ -20,7 +21,7 @@ public interface Stack<T> extends Contract<Stack<T>> {
      */
     @Invariant
     default public boolean elementsNeverNull() {
-        return IntStream.range(0, size()).allMatch(pos -> elementAt(pos) != null);
+        return forAllInts(0, size(), pos -> elementAt(pos) != null);
     }
 
     @Requires("!stack_is_empty")
@@ -73,12 +74,8 @@ public interface Stack<T> extends Contract<Stack<T>> {
         return top().equals(element);
     }
 
-    default boolean frame_condition(int range) {
-        /* Range is exclusive - this simulates a "forall" spec with range.
-         * Similarly, a range with anyMatch is essentially an exists clause.
-         * A set of utility methods can be probably provided to ensure better readability of specs.
-         */
-        return IntStream.range(0, range).allMatch(pos -> old().elementAt(pos).equals(elementAt(pos)));
+    default boolean frame_condition(int lastPos) {
+        return forAllInts(0, lastPos, pos -> old().elementAt(pos).equals(elementAt(pos)));
     }
 
     default public boolean push_frame_condition() {

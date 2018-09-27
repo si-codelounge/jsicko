@@ -9,10 +9,6 @@ public interface Contract<T> {
         throw new RuntimeException("Illegal call of old() method outside a compiled contract");
     }
 
-    static boolean implies(Boolean lhs, Boolean rhs) {
-        return !lhs || rhs;
-    }
-
     /*
      * A basic form of purity check
      * that relies on proper implementation of
@@ -127,6 +123,7 @@ public interface Contract<T> {
         }
 
     }
+
 
 }
 

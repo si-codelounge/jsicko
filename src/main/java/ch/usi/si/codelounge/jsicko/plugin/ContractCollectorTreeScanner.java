@@ -1,14 +1,12 @@
 package ch.usi.si.codelounge.jsicko.plugin;
 
 import ch.usi.si.codelounge.jsicko.Contract;
-import ch.usi.si.codelounge.jsicko.utils.JavacUtils;
+import ch.usi.si.codelounge.jsicko.plugin.utils.JavacUtils;
 import com.sun.source.tree.*;
 import com.sun.source.util.TreeScanner;
 import com.sun.tools.javac.api.BasicJavacTask;
 import com.sun.tools.javac.code.*;
-import com.sun.tools.javac.comp.AttrContext;
 import com.sun.tools.javac.comp.Enter;
-import com.sun.tools.javac.comp.Env;
 import com.sun.tools.javac.comp.MemberEnter;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.*;
@@ -177,7 +175,7 @@ class ContractCollectorTreeScanner extends TreeScanner<Void, Stack<Tree>> {
             var methodDecl = (JCMethodDecl) methodTree;
 
             var thisType = factory.This(classDecl.sym.type);
-            var methodExpr = JavacUtils.constructExpression(factory, symbolsTable,"ch.usi.si.codelounge.jsicko.utils.CloneUtils.kryoClone");
+            var methodExpr = JavacUtils.constructExpression(factory, symbolsTable,"ch.usi.si.codelounge.jsicko.plugin.utils.CloneUtils.kryoClone");
             var call = factory.Apply(com.sun.tools.javac.util.List.nil(),methodExpr, com.sun.tools.javac.util.List.of(thisType));
             var assignment = factory.Assignment(oldField.sym,call);
             methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(assignment);
