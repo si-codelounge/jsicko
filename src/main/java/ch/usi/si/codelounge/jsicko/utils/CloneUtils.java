@@ -6,8 +6,11 @@ import com.esotericsoftware.kryo.Kryo;
 /**
  * Utility class for object cloning.
  */
-public abstract class CloneUtils {
+public final class CloneUtils {
 
+    private CloneUtils() {
+        throw new RuntimeException("This is an utility class that is supposed to have no instances.");
+    }
 
     /**
      * Clones the provided object by using Kryo.

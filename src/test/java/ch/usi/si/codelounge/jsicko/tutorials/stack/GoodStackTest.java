@@ -1,11 +1,12 @@
-package ch.usi.si.codelounge.jsicko;
+package ch.usi.si.codelounge.jsicko.tutorials.stack;
 
-import ch.usi.si.codelounge.jsicko.tutorials.stack.GoodStack;
+import ch.usi.si.codelounge.jsicko.Contract;
+import ch.usi.si.codelounge.jsicko.tutorials.stack.impl.GoodStack;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-public class GoodStackTests {
+public class GoodStackTest {
 
     @Test
     public void popOnEmptyStack() throws Throwable {
@@ -30,7 +31,7 @@ public class GoodStackTests {
     public void baseTest() throws Throwable {
         GoodStack<String> foo = new GoodStack<>();
         foo.push("elem");
-        foo.peek();
+        foo.top();
         foo.pop();
     }
 
@@ -40,14 +41,14 @@ public class GoodStackTests {
         foo.push("elem1");
         foo.push("elem2");
         foo.push("elem3");
-        foo.peek();
+        foo.top();
         foo.pop();
-        foo.peek();
+        foo.top();
         foo.pop();
         foo.push("elem4");
-        foo.peek();
+        foo.top();
         foo.pop();
-        foo.peek();
+        foo.top();
         foo.pop();
     }
 

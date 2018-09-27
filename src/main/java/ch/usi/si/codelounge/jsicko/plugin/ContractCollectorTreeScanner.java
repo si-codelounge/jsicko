@@ -1,163 +1,163 @@
 package ch.usi.si.codelounge.jsicko.plugin;
 
 import ch.usi.si.codelounge.jsicko.Contract;
+import ch.usi.si.codelounge.jsicko.utils.JavacUtils;
 import com.sun.source.tree.*;
-import com.sun.source.util.TreePath;
 import com.sun.source.util.TreeScanner;
 import com.sun.tools.javac.api.BasicJavacTask;
 import com.sun.tools.javac.code.*;
-import com.sun.tools.javac.comp.Resolve;
+import com.sun.tools.javac.comp.AttrContext;
+import com.sun.tools.javac.comp.Enter;
+import com.sun.tools.javac.comp.Env;
+import com.sun.tools.javac.comp.MemberEnter;
 import com.sun.tools.javac.tree.JCTree;
-import com.sun.source.util.Trees;
+import com.sun.tools.javac.tree.JCTree.*;
 import com.sun.tools.javac.tree.TreeMaker;
-import com.sun.tools.javac.util.Log;
 import com.sun.tools.javac.util.Name;
 import com.sun.tools.javac.util.Names;
-import com.sun.tools.javac.comp.Check;
 
-import javax.lang.model.type.*;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Stack;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.sun.tools.javac.util.List.nil;
 
-public class ContractCollectorTreeScanner extends TreeScanner<Void, Void> {
+class ContractCollectorTreeScanner extends TreeScanner<Void, Stack<Tree>> {
 
-    private final BasicJavacTask task;
-    private final Trees trees;
     private final Types types;
-    private final String OLD_METHOD_IDENTIFIER_STRING = "old";
-    private Optional<CompilationUnitTree> currentCompilationUnitTree = Optional.empty();
-    private Optional<ClassTree> currentClassTree = Optional.empty();
     private final Names symbolsTable;
     private final TreeMaker factory;
+    private final Enter enter;
+    private final MemberEnter memberEnter;
+
     private boolean hasContract;
-    private List<Tree> contracts;
-    private Optional<JCTree.JCVariableDecl> returnVarDecl = Optional.empty();
-    private Optional<JCTree.JCVariableDecl> optionalOldField = Optional.empty();
-    private static final String RETURNS_SYNTHETIC_IDENTIFIER_STRING = "$returns";
-    private final String RETURNS_CLAUSE_PARAMETER_IDENTIFIER_STRING = "returns";
-    private final String OLD_FIELD_IDENTIFIER_STRING = "$old";
-    private final Check chk;
-    private final Log log;
-    private final Resolve rs;
+
+    private Optional<JCVariableDecl> currentMethodReturnVarDecl = Optional.empty();
+    private Optional<JCVariableDecl> optionalOldField = Optional.empty();
+    private Optional<JCMethodDecl> overriddenOldMethod = Optional.empty();
+    private Optional<CompilationUnitTree> currentCompilationUnitTree = Optional.empty();
+    private Optional<JCClassDecl> currentClassTree = Optional.empty();
+    private Optional<MethodTree> currentMethodTree;
 
 
     public ContractCollectorTreeScanner(BasicJavacTask task) {
-        this.task = task;
         this.symbolsTable = Names.instance(task.getContext());
-        this.trees = Trees.instance(task);
         this.types =  Types.instance(task.getContext());
         this.factory = TreeMaker.instance(task.getContext());
+        this.enter = Enter.instance(task.getContext());
+        this.memberEnter = MemberEnter.instance(task.getContext());
         this.hasContract = false;
-        this.chk = Check.instance(task.getContext());
-        this.log = Log.instance(task.getContext());
-        this.rs = Resolve.instance(task.getContext());
+        this.overriddenOldMethod = Optional.empty();
+
     }
 
     @Override
-    public Void visitCompilationUnit(CompilationUnitTree node, Void v) {
+    public Void visitCompilationUnit(CompilationUnitTree node, Stack<Tree> relevantScope) {
         this.currentCompilationUnitTree = Optional.of(node);
-        return super.visitCompilationUnit(node,v);
+        return super.visitCompilationUnit(node,relevantScope);
     }
 
     @Override
-    public Void visitClass(ClassTree classTree, Void v) {
+    public Void visitClass(ClassTree classTree, Stack<Tree> relevantScope) {
 
         this.hasContract = false;
 
         this.currentCompilationUnitTree.ifPresent((CompilationUnitTree currentCompilationUnitTree) -> {
 
-            var implementsClauses = classTree.getImplementsClause().stream();
+            var classDecl = (JCClassDecl) classTree;
 
-            var contracts = implementsClauses.filter((Tree interfaceTree) -> {
+            List<Type> contracts = retrieveContractTypes(classDecl.sym.type);
+            System.out.println("Contracts for " + classTree.getSimpleName() + " are " + contracts);
 
-                var interfaceType =  trees.getTypeMirror(TreePath.getPath(currentCompilationUnitTree,interfaceTree));
+            this.hasContract = !classDecl.sym.type.isInterface() && !contracts.isEmpty();
 
-                if (interfaceType instanceof DeclaredType) {
-                    var element = ((DeclaredType) interfaceType).asElement();
-                    if (element instanceof Symbol.ClassSymbol) {
-                        var classSymbol = (Symbol.ClassSymbol) element;
-                        var contractInterfaces = classSymbol.getInterfaces().stream().filter(this::extendsJsickoContract).collect(Collectors.toList());
-
-                        return !contractInterfaces.isEmpty();
-                    }
-
-                }
-                return false;
-            }).collect(Collectors.toList());
-
-            this.hasContract = !contracts.isEmpty();
-            this.contracts = new ArrayList<>(contracts);
             if (hasContract) {
-                System.out.println("Found class " + classTree.getSimpleName() + " extending following contracts: " + this.contracts);
-                this.currentClassTree = Optional.of(classTree);
-                optionalDeclareOldValueVariable(this.contracts.get(0), (JCTree.JCClassDecl) classTree);
+                this.currentClassTree = Optional.of(classDecl);
+                optionalDeclareOldValueVariable(classDecl);
             } else {
                 this.currentClassTree = Optional.empty();
                 this.optionalOldField = Optional.empty();
-                this.returnVarDecl = Optional.empty();
+                this.currentMethodReturnVarDecl = Optional.empty();
+                this.overriddenOldMethod = Optional.empty();
             }
 
         });
 
-        return super.visitClass(classTree, v);
+        return super.visitClass(classTree, relevantScope);
     }
 
-    private boolean extendsJsickoContract(Type t) {
+
+
+    private List<Type> retrieveContractTypes(Type t) {
         var contractTypeName = this.symbolsTable.fromString("ch.usi.si.codelounge.jsicko.Contract");
-        var rawType = t.asElement().erasure(types);
-        return t.isInterface() && rawType.asElement().getQualifiedName().equals(contractTypeName);
+        var closure = types.closure(t);
+
+        var contractType = closure.stream().filter((Type closureElem) -> {
+            var rawType = closureElem.asElement().erasure(types);
+            return rawType.asElement().getQualifiedName().equals(contractTypeName);
+        }).map((Type likelyContractType) -> likelyContractType.asElement().erasure(types)).findFirst();
+
+
+        if (contractType.isPresent()) {
+            return closure.stream().filter((Type closureElem) -> {
+                var rawType = closureElem.asElement().erasure(types);
+                return rawType.isInterface() && types.isAssignable(rawType,contractType.get());
+            }).collect(Collectors.toList());
+        } else {
+            return List.of();
+        }
     }
 
     @Override
-    public Void visitMethod(MethodTree methodTree, Void v) {
-        var trees = Trees.instance(task);
+    public Void visitMethod(MethodTree methodTree, Stack<Tree> relevantScope) {
+        var methodDecl = (JCMethodDecl) methodTree;
 
-        Optional<Symbol> optionalOverriddenMethod = Optional.empty();
+        this.currentMethodTree = Optional.of(methodTree);
 
-        if (this.hasContract && currentCompilationUnitTree.isPresent()) {
+        List<Symbol> overriddenMethods = List.of();
+
+        if (this.hasContract && currentCompilationUnitTree.isPresent() && !methodDecl.equals(this.overriddenOldMethod.get())) {
             System.out.println("Visiting Declared Method in a Class w/Contract: " + methodTree.getName() + " w return type " + methodTree.getReturnType()) ;
 
-            var methodSymbol = ((JCTree.JCMethodDecl)methodTree).sym;
-            var contract = this.contracts.get(0);
+            var methodSymbol = methodDecl.sym;
+            var thisTypeClosure = types.closure(this.currentClassTree.get().sym.type);
 
-            var contractType = trees.getTypeMirror(TreePath.getPath(currentCompilationUnitTree.get(), contract));
-            var contractClassType = (Type.ClassType) contractType;
+            overriddenMethods = thisTypeClosure.stream().flatMap((Type contractType) -> {
+              Stream<Symbol> contractOverriddenSymbols = contractType.tsym.getEnclosedElements().stream().filter((Symbol contractElement) -> {
+                    return methodSymbol.getQualifiedName().equals(contractElement.name) &&
+                            methodSymbol.overrides(contractElement, contractType.tsym, types, true, true);
+                });
+              return contractOverriddenSymbols;
+            }).collect(Collectors.toList());
 
-            optionalOverriddenMethod = contractClassType.tsym.getEnclosedElements().stream().filter((Symbol contractElement) -> {
-                return methodSymbol.getQualifiedName().equals(contractElement.name) &&
-                        methodSymbol.overrides(contractElement, contractClassType.tsym, types, true, true);
-            }).findFirst();
+            if (!overriddenMethods.contains(methodSymbol))
+                overriddenMethods.add(methodSymbol);
 
-            if (optionalOverriddenMethod.isPresent()) {
+
+            if (overriddenMethods.size() > 0) {
                 Void w = null;
-                JCTree.JCBlock finallyBlock = null;
+                JCBlock finallyBlock = null;
 
-                var overriddenMethod = optionalOverriddenMethod.get();
-//                System.out.println("Overridden method: " + overriddenMethod);
-                List<Contract.Requires> requires = Arrays.asList(overriddenMethod.getAnnotationsByType(Contract.Requires.class));
-//                System.out.println("Overridden method requires:" + requires);
-                List<Contract.Ensures> ensures = Arrays.asList(overriddenMethod.getAnnotationsByType(Contract.Ensures.class));
-//                System.out.println("Overridden method ensures:" + ensures);
+                List<Contract.Requires> requires = overriddenMethods.stream().flatMap((Symbol overriddenMethod) -> Arrays.stream(overriddenMethod.getAnnotationsByType(Contract.Requires.class))).collect(Collectors.toList());
+                List<Contract.Ensures> ensures = overriddenMethods.stream().flatMap((Symbol overriddenMethod) -> Arrays.stream(overriddenMethod.getAnnotationsByType(Contract.Ensures.class))).collect(Collectors.toList());
 
-                var isMarkedPure = overriddenMethod.getAnnotation(Contract.Pure.class) != null;
+                var isMarkedPure = overriddenMethods.stream().flatMap((Symbol overriddenMethod) -> Arrays.stream(overriddenMethod.getAnnotationsByType(Contract.Pure.class))).collect(Collectors.toList()).size() > 0;
 
                 finallyBlock = boxMethodBody(methodTree);
                 optionalDeclareReturnValueCatcher(methodTree);
 
-                if (!isMarkedPure) {
-                    optionalSaveOldState(methodTree, (JCTree.JCClassDecl) this.currentClassTree.get());
+                if (!methodSymbol.isConstructor() && !methodSymbol.isStatic() && !isMarkedPure) {
+                    optionalSaveOldState(methodTree, (JCClassDecl) this.currentClassTree.get());
                 }
-
-                System.out.println(this.optionalOldField);
 
                 addPreconditions(methodTree, requires);
 
-                w = super.visitMethod(methodTree, v);
+                relevantScope.push(methodTree);
+                w = super.visitMethod(methodTree, relevantScope);
+                relevantScope.pop();
 
                 addPostconditions(methodTree, finallyBlock, ensures);
 
@@ -165,58 +165,48 @@ public class ContractCollectorTreeScanner extends TreeScanner<Void, Void> {
                 System.out.println(methodTree);
                 return w;
             } else {
-                this.returnVarDecl = Optional.empty();
+                this.currentMethodReturnVarDecl = Optional.empty();
             }
         }
 
-        return super.visitMethod(methodTree, v);
+        return super.visitMethod(methodTree, relevantScope);
     }
 
-    private void optionalSaveOldState(MethodTree methodTree,  JCTree.JCClassDecl classDecl) {
-        this.optionalOldField.ifPresent((JCTree.JCVariableDecl oldField) -> {
-            var methodDecl = (JCTree.JCMethodDecl) methodTree;
-
-            JCTree.JCExpression first = factory.Ident(symbolsTable.fromString("ch"));
-            var nameList = List.of("usi","si","codelounge","jsicko","utils","CloneUtils","kryoClone").stream().map((String string) ->{
-                return symbolsTable.fromString(string);
-            });
-
-            var cur = first;
-            var methodExpr = nameList.reduce(first, (JCTree.JCExpression firstElem, Name name) -> {
-                return (JCTree.JCExpression) factory.Select(firstElem, name);
-            }, (JCTree.JCExpression firstElem, JCTree.JCExpression name) -> {
-                return  name;
-            });
+    private void optionalSaveOldState(MethodTree methodTree,  JCClassDecl classDecl) {
+        this.optionalOldField.ifPresent((JCVariableDecl oldField) -> {
+            var methodDecl = (JCMethodDecl) methodTree;
 
             var thisType = factory.This(classDecl.sym.type);
+            var methodExpr = JavacUtils.constructExpression(factory, symbolsTable,"ch.usi.si.codelounge.jsicko.utils.CloneUtils.kryoClone");
             var call = factory.Apply(com.sun.tools.javac.util.List.nil(),methodExpr, com.sun.tools.javac.util.List.of(thisType));
             var assignment = factory.Assignment(oldField.sym,call);
             methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(assignment);
         });
     }
 
-    private void optionalDeclareOldValueVariable(Tree contractTypeTree, JCTree.JCClassDecl classDecl) {
+    private void optionalDeclareOldValueVariable(JCClassDecl classDecl) {
         if (!this.optionalOldField.isPresent()) {
 
             var thisType = classDecl.sym.type;
-            var varSymbol = new Symbol.VarSymbol(Flags.PRIVATE, symbolsTable.fromString(OLD_FIELD_IDENTIFIER_STRING), thisType, classDecl.sym);
+            var varSymbol = new Symbol.VarSymbol(Flags.PRIVATE, symbolsTable.fromString(Constants.OLD_FIELD_IDENTIFIER_STRING), thisType, classDecl.sym);
             classDecl.sym.members().enter(varSymbol);
             var oldField = factory.VarDef(varSymbol, factory.Literal(TypeTag.BOT, null));
             this.optionalOldField = Optional.of(oldField);
-            ((JCTree.JCClassDecl)this.currentClassTree.get()).defs = ((JCTree.JCClassDecl)this.currentClassTree.get()).defs.prepend(oldField);
+            ((JCClassDecl)this.currentClassTree.get()).defs = ((JCClassDecl)this.currentClassTree.get()).defs.prepend(oldField);
 
             /* Override @old */
             var overriddenOldMethodType = new Type.MethodType(com.sun.tools.javac.util.List.nil(),
                     thisType,
                     com.sun.tools.javac.util.List.nil(),
                     classDecl.sym);
-            var overriddenOldMethodSymbol = new Symbol.MethodSymbol(Flags.PUBLIC,symbolsTable.fromString(OLD_METHOD_IDENTIFIER_STRING),overriddenOldMethodType,classDecl.sym);
+            var overriddenOldMethodSymbol = new Symbol.MethodSymbol(Flags.PUBLIC,symbolsTable.fromString(Constants.OLD_METHOD_IDENTIFIER_STRING),overriddenOldMethodType,classDecl.sym);
             var returnOldFieldStatement = factory.Return(factory.Ident(varSymbol));
             var overriddenOldMethodBody = factory.Block(0, com.sun.tools.javac.util.List.of(returnOldFieldStatement));
             var overriddenOldMethod = factory.MethodDef(overriddenOldMethodSymbol, overriddenOldMethodBody);
-            System.err.println(overriddenOldMethod);
 
-            ((JCTree.JCClassDecl)this.currentClassTree.get()).defs = ((JCTree.JCClassDecl)this.currentClassTree.get()).defs.prepend(overriddenOldMethod);
+            ((JCClassDecl)this.currentClassTree.get()).defs = ((JCClassDecl)this.currentClassTree.get()).defs.prepend(overriddenOldMethod);
+
+            this.overriddenOldMethod = Optional.of(overriddenOldMethod);
 
             classDecl.sym.members().enter(overriddenOldMethodSymbol);
 
@@ -224,40 +214,35 @@ public class ContractCollectorTreeScanner extends TreeScanner<Void, Void> {
         }
     }
 
-    @Override
-    public Void visitVariable(VariableTree node, Void v) {
-        if (node.toString().contains(" baseObject ")) {
-            System.err.println(node.getModifiers());
-        }
-        return super.visitVariable(node, v);
-    }
+    private JCBlock boxMethodBody(MethodTree methodTree) {
+        JCBlock body = (JCBlock) methodTree.getBody();
+        JCMethodDecl methodDecl = (JCMethodDecl) methodTree;
+        var methodSymbol = methodDecl.sym;
 
-
-    private JCTree.JCBlock boxMethodBody(MethodTree methodTree) {
-        JCTree.JCBlock body = (JCTree.JCBlock) methodTree.getBody();
-        JCTree.JCMethodDecl methodDecl = (JCTree.JCMethodDecl) methodTree;
+        if (methodSymbol.isConstructor())
+            return body;
 
         var finallyBlock = factory.Block(0, com.sun.tools.javac.util.List.nil());
 
-        var tryBlock = factory.Try(factory.Block(0,body.stats), com.sun.tools.javac.util.List.nil(),finallyBlock);
+        var tryBlock = factory.Try(factory.Block(0,body.stats), com.sun.tools.javac.util.List.nil(), finallyBlock);
         body.stats = com.sun.tools.javac.util.List.of(tryBlock);
         return finallyBlock;
     }
 
     private void optionalDeclareReturnValueCatcher(MethodTree methodTree) {
-        JCTree.JCBlock body = (JCTree.JCBlock) methodTree.getBody();
-        JCTree.JCMethodDecl methodDecl = (JCTree.JCMethodDecl) methodTree;
-        if (!hasVoidReturnType(methodTree)) {
-            JCTree.JCLiteral zeroValue = (methodDecl.sym.getReturnType().isPrimitive() ?
+        JCBlock body = (JCBlock) methodTree.getBody();
+        JCMethodDecl methodDecl = (JCMethodDecl) methodTree;
+        if (!methodDecl.sym.isConstructor() && !hasVoidReturnType(methodTree)) {
+            JCLiteral zeroValue = (methodDecl.sym.getReturnType().isPrimitive() ?
                     factory.Literal(methodDecl.sym.getReturnType().getTag(),0)
                     : factory.Literal(TypeTag.BOT,null));
 
-            var varDef = factory.VarDef(factory.Modifiers(0), symbolsTable.fromString(RETURNS_SYNTHETIC_IDENTIFIER_STRING), methodDecl.restype,zeroValue);
+            var varDef = factory.VarDef(factory.Modifiers(0), symbolsTable.fromString(Constants.RETURNS_SYNTHETIC_IDENTIFIER_STRING), methodDecl.restype,zeroValue);
             body.stats = body.stats.prepend(varDef);
 
-            this.returnVarDecl = Optional.of(varDef);
+            this.currentMethodReturnVarDecl = Optional.of(varDef);
         } else {
-            this.returnVarDecl = Optional.empty();
+            this.currentMethodReturnVarDecl = Optional.empty();
         }
     }
 
@@ -265,62 +250,64 @@ public class ContractCollectorTreeScanner extends TreeScanner<Void, Void> {
         return methodTree.getReturnType().toString().equals("void");
     }
 
-
-
     private void addPreconditions(MethodTree specifiedMethodTree, List<Contract.Requires> requires) {
-        JCTree.JCBlock body = (JCTree.JCBlock) specifiedMethodTree.getBody();
-        JCTree.JCMethodDecl methodDecl = (JCTree.JCMethodDecl) specifiedMethodTree;
+        JCBlock body = (JCBlock) specifiedMethodTree.getBody();
+        JCMethodDecl methodDecl = (JCMethodDecl) specifiedMethodTree;
 
         System.out.println("For method " + specifiedMethodTree.getName() + " - creating precondition check " + requires);
 
         var allRequiresClauses = requires.stream().flatMap(clauseGroup -> Arrays.stream(clauseGroup.value())).collect(Collectors.toList());
 
         allRequiresClauses.forEach((String requiresClause) -> {
-            JCTree.JCIf check = createPreconditionCheck(specifiedMethodTree, requiresClause, ContractConditionEnum.PRECONDITION);
+            JCIf check = createPreconditionCheck(specifiedMethodTree, requiresClause, ContractConditionEnum.PRECONDITION);
             body.stats = body.stats.prepend(check);
-
         });
-
     }
 
-    private void addPostconditions(MethodTree method, JCTree.JCBlock finallyBlock, List<Contract.Ensures> ensures) {
-
-        JCTree.JCBlock body = (JCTree.JCBlock) method.getBody();
-        JCTree.JCMethodDecl methodDecl = (JCTree.JCMethodDecl) method;
-
+    private void addPostconditions(MethodTree method, JCBlock finallyBlock, List<Contract.Ensures> ensures) {
         System.out.println("For method " + method.getName() + " - creating postcondition check " + ensures);
 
         var allEnsuresClauses = ensures.stream().flatMap(clauseGroup -> Arrays.stream(clauseGroup.value())).collect(Collectors.toList());
 
         allEnsuresClauses.forEach((String ensuresClause) -> {
-            JCTree.JCIf check = createPreconditionCheck(method, ensuresClause, ContractConditionEnum.POSTCONDITION);
+            JCIf check = createPreconditionCheck(method, ensuresClause, ContractConditionEnum.POSTCONDITION);
             finallyBlock.stats = finallyBlock.stats.prepend(check);
         });
 
     }
 
     @Override
-    public Void visitReturn(ReturnTree node, Void v) {
-        var returnNode = (JCTree.JCReturn) node;
+    public Void visitReturn(ReturnTree node, Stack<Tree> relevantScope) {
+        var returnNode = (JCReturn) node;
 
-        this.returnVarDecl.ifPresent((JCTree.JCVariableDecl varDecl) -> {
-            //System.err.println(varDecl.sym);
-            var newArg = factory.Assign(factory.Ident(symbolsTable.fromString("$returns")),((JCTree.JCReturn) node).expr);
-            System.err.println(newArg);
-
-            returnNode.expr = newArg;
+        this.currentMethodReturnVarDecl.ifPresent((JCVariableDecl varDecl) -> {
+            var scopePeek = relevantScope.peek();
+            if (scopePeek.equals(this.currentMethodTree.get())) {
+                var newArg = factory.Assign(factory.Ident(symbolsTable.fromString("$returns")), ((JCReturn) node).expr);
+                returnNode.expr = newArg;
+            }
         });
 
-        return super.visitReturn(node, v);
+        return super.visitReturn(node, relevantScope);
     }
 
-    private JCTree.JCIf createPreconditionCheck(MethodTree method, String requiresClause, ContractConditionEnum conditionType) {
+    @Override
+    public Void visitLambdaExpression(LambdaExpressionTree node, Stack<Tree> relevantScope) {
+        Void v;
+        relevantScope.push(node);
+        v = super.visitLambdaExpression(node,relevantScope);
+        relevantScope.pop();
+        return v;
+    }
+
+
+    private JCIf createPreconditionCheck(MethodTree method, String requiresClause, ContractConditionEnum conditionType) {
         return factory.at(((JCTree) method).pos).If(factory.Parens(createPreconditionCheckCondition(method, requiresClause)),
                         createPreconditionCheckBlock( method, requiresClause, conditionType),
                         null);
     }
 
-    private JCTree.JCExpression createPreconditionCheckCondition(MethodTree method, String requiresClause) {
+    private JCExpression createPreconditionCheckCondition(MethodTree method, String requiresClause) {
 
         var isNegated = (requiresClause.startsWith("!"));
         var methodIdentifier = (isNegated ? requiresClause.substring(1) : requiresClause);
@@ -334,33 +321,33 @@ public class ContractCollectorTreeScanner extends TreeScanner<Void, Void> {
         }
 
         var clauseSymbol = methodSymbol.get();
-            List<JCTree.JCExpression> args = clauseSymbol.params().stream().map((Symbol.VarSymbol clauseParamSymbol) -> {
+            List<JCExpression> args = clauseSymbol.params().stream().map((Symbol.VarSymbol clauseParamSymbol) -> {
                 var clauseParamName = clauseParamSymbol.name.toString();
-                if (clauseParamName.equals(RETURNS_CLAUSE_PARAMETER_IDENTIFIER_STRING)) {
-                    clauseParamName = RETURNS_SYNTHETIC_IDENTIFIER_STRING;
+                if (clauseParamName.equals(Constants.RETURNS_CLAUSE_PARAMETER_IDENTIFIER_STRING)) {
+                    clauseParamName = Constants.RETURNS_SYNTHETIC_IDENTIFIER_STRING;
                 }
                 return factory.Ident(symbolsTable.fromString(clauseParamName));
             }).collect(Collectors.toList());
 
-        var call = factory.App(factory.Ident(methodSymbol.get()), com.sun.tools.javac.util.List.from(args.toArray( new JCTree.JCExpression[] {})));
-        return (isNegated ? call: factory.Unary(JCTree.Tag.NOT,call) );
+        var call = factory.App(factory.Ident(methodSymbol.get()), com.sun.tools.javac.util.List.from(args.toArray( new JCExpression[] {})));
+        return (isNegated ? call: factory.Unary(Tag.NOT,call) );
 
     }
 
     private Optional<Symbol.MethodSymbol> findContractMethod(Name methodIdentifier) {
-        var contract = this.contracts.get(0);
+        var classType = ((JCClassDecl) this.currentClassTree.get()).sym.type;
+        var closure = types.closure(classType);
 
-        var contractType = trees.getTypeMirror(TreePath.getPath(currentCompilationUnitTree.get(), contract));
-        var contractClassType = (Type.ClassType) contractType;
-
-        var contractMethod =  contractClassType.tsym.getEnclosedElements().stream().filter((Symbol contractElement) -> {
-            return contractElement.name.equals(methodIdentifier);
-        }).map((Symbol contractElement) -> (Symbol.MethodSymbol) contractElement).findFirst();
+        var contractMethod =  closure.stream().flatMap((Type closureElem) ->
+                closureElem.asElement().getEnclosedElements().stream()
+                .filter((Symbol contractElement) -> contractElement.name.equals(methodIdentifier))
+                .map((Symbol contractElement) -> (Symbol.MethodSymbol) contractElement))
+                .findFirst();
 
         return contractMethod;
     }
 
-    private JCTree.JCBlock createPreconditionCheckBlock(MethodTree method, String requiresClause, ContractConditionEnum conditionType) {
+    private JCBlock createPreconditionCheckBlock(MethodTree method, String requiresClause, ContractConditionEnum conditionType) {
 
         String errorMessagePrefix = String.format("%s %s violated on method %s", conditionType, requiresClause, method.getName().toString());
 
