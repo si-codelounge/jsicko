@@ -9,6 +9,7 @@ import com.sun.tools.javac.api.BasicJavacTask;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Stack;
 
 public class ContractCollectorTaskListener implements TaskListener {
 
@@ -24,7 +25,7 @@ public class ContractCollectorTaskListener implements TaskListener {
         if (e.getKind() != TaskEvent.Kind.ENTER) {
             return;
         }
-        e.getCompilationUnit().accept(new ContractCollectorTreeScanner((BasicJavacTask) task), null);
+        e.getCompilationUnit().accept(new ContractCollectorTreeScanner((BasicJavacTask) task), new Stack<>());
     }
 
 }

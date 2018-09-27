@@ -1,7 +1,7 @@
-package ch.usi.si.codelounge.jsicko;
+package ch.usi.si.codelounge.jsicko.tutorials.stack;
 
-import ch.usi.si.codelounge.jsicko.tutorials.stack.BadStack;
-import ch.usi.si.codelounge.jsicko.tutorials.stack.Stack;
+import ch.usi.si.codelounge.jsicko.Contract;
+import ch.usi.si.codelounge.jsicko.tutorials.stack.impl.BadStack;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -27,7 +27,7 @@ public class BadStackTest {
     public void baseTest() throws Throwable {
         BadStack<String> foo = new BadStack<>();
         foo.push("elem");
-        foo.peek();
+        foo.top();
         foo.pop();
     }
 
