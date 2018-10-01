@@ -1,21 +1,17 @@
 package ch.usi.si.codelounge.jsicko.plugin;
 
-import com.sun.source.tree.ClassTree;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
 import com.sun.tools.javac.api.BasicJavacTask;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Stack;
 
-public class ContractCollectorTaskListener implements TaskListener {
+public class ContractCompilerTaskListener implements TaskListener {
 
     private final JavacTask task;
 
-    public ContractCollectorTaskListener(JavacTask task) {
+    public ContractCompilerTaskListener(JavacTask task) {
         this.task = task;
     }
 
@@ -25,7 +21,7 @@ public class ContractCollectorTaskListener implements TaskListener {
         if (e.getKind() != TaskEvent.Kind.ENTER) {
             return;
         }
-        e.getCompilationUnit().accept(new ContractCollectorTreeScanner((BasicJavacTask) task), new Stack<>());
+        e.getCompilationUnit().accept(new ContractCompilerTreeScanner((BasicJavacTask) task), new Stack<>());
     }
 
 }
