@@ -19,6 +19,9 @@ public interface Contract<T> {
     }
 
 
+    interface Foo {
+
+    }
     /**
      * Declares the preconditions of a method.
      *
@@ -44,8 +47,6 @@ public interface Contract<T> {
     /**
      * Declares the method as specifying a class invariant.
      *
-     * The value of this class corresponds to the name of a boolean method
-     * implementing a clause.
      */
     @Target({ElementType.METHOD})
     public static @interface Invariant {
@@ -61,7 +62,30 @@ public interface Contract<T> {
 
     }
 
-    class PreconditionViolation extends AssertionError {
+    /**
+     * Abstract class representing generic contract condition violations.
+     */
+    abstract class ContractConditionViolation extends AssertionError {
+
+        /**
+         * Constructs an AssertionError with its detail message derived
+         * from the specified object, which is converted to a string as
+         * defined in section 15.18.1.1 of
+         * <cite>The Java&trade; Language Specification</cite>.
+         *<p>
+         * If the specified object is an instance of {@code Throwable}, it
+         * becomes the <i>cause</i> of the newly constructed assertion error.
+         *
+         * @param detailMessage value to be used in constructing detail message
+         * @see   Throwable#getCause()
+         */
+        public ContractConditionViolation(Object detailMessage) {
+            super(String.valueOf(detailMessage));
+
+        }
+    }
+
+    final class PreconditionViolation extends ContractConditionViolation {
 
         /**
          * Constructs an AssertionError with its detail message derived
@@ -82,7 +106,7 @@ public interface Contract<T> {
 
     }
 
-    class PostconditionViolation extends AssertionError {
+    final class PostconditionViolation extends ContractConditionViolation {
 
         /**
          * Constructs an AssertionError with its detail message derived
@@ -103,7 +127,7 @@ public interface Contract<T> {
 
     }
 
-    class InvariantViolation extends AssertionError {
+    final class InvariantViolation extends ContractConditionViolation {
 
         /**
          * Constructs an AssertionError with its detail message derived

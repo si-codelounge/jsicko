@@ -31,7 +31,7 @@ public class JSickoContractCompiler implements Plugin {
     @Override
     public void init(JavacTask task, String... args) {
         Context context = ((BasicJavacTask) task).getContext();
-        ContractCollectorTaskListener contractCollectorTaskListener = new ContractCollectorTaskListener(task);
+        ContractCompilerTaskListener contractCollectorTaskListener = new ContractCompilerTaskListener(task);
         task.addTaskListener(contractCollectorTaskListener);
     }
 
