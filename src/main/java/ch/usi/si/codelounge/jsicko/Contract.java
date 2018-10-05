@@ -18,17 +18,13 @@ public interface Contract<T> {
         return this.equals(old());
     }
 
-
-    interface Foo {
-
-    }
     /**
      * Declares the preconditions of a method.
      *
      * The value of this class corresponds to the name of a boolean method
      * implementing a clause.
      */
-    @Target({ElementType.METHOD})
+    @Target({ElementType.METHOD, ElementType.CONSTRUCTOR})
     public static @interface Requires {
         String[] value();
     }
@@ -39,7 +35,7 @@ public interface Contract<T> {
      * The value of this class corresponds to the name of a boolean method
      * implementing a clause.
      */
-    @Target({ElementType.METHOD})
+    @Target({ElementType.METHOD, ElementType.CONSTRUCTOR})
     public static @interface Ensures {
         String[] value();
     }

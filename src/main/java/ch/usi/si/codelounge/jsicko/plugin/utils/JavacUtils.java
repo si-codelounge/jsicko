@@ -1,5 +1,6 @@
 package ch.usi.si.codelounge.jsicko.plugin.utils;
 
+import ch.usi.si.codelounge.jsicko.Contract;
 import com.sun.source.tree.MethodTree;
 import com.sun.tools.javac.api.BasicJavacTask;
 import com.sun.tools.javac.code.Symbol;
@@ -41,10 +42,8 @@ public final class JavacUtils {
             if (firstElem == null)
                 return factory.Ident(name);
             else
-                return (JCTree.JCExpression) factory.Select(firstElem, name);
+                return factory.Select(firstElem, name);
         }, (JCTree.JCExpression firstElem, JCTree.JCExpression name) -> name);
-
-        System.out.println(" *** " + expr);
 
         return expr;
     }
@@ -98,4 +97,22 @@ public final class JavacUtils {
                 : factory.Literal(TypeTag.BOT,null);
     }
 
+    public java.util.List<Symbol.MethodSymbol> findInvariants(JCTree.JCClassDecl classDecl) {
+        var thisTypeClosure = this.typeClosure(classDecl.sym.type);
+
+        return thisTypeClosure.stream().flatMap((Type contractType) -> {
+            Stream<Symbol> contractOverriddenSymbols = contractType.tsym.getEnclosedElements().stream().filter((Symbol contractElement) -> {
+                return (contractElement instanceof Symbol.MethodSymbol) && contractElement.getAnnotation(Contract.Invariant.class) != null;
+            });
+            return contractOverriddenSymbols.map((Symbol s) -> (Symbol.MethodSymbol) s);
+        }).collect(Collectors.toList());
+    }
+
+    public boolean isSuperOrThisConstructorCall(JCTree.JCStatement head) {
+        return head instanceof JCTree.JCExpressionStatement &&
+                ((JCTree.JCExpressionStatement)head).expr instanceof JCTree.JCMethodInvocation &&
+                ((JCTree.JCMethodInvocation)((JCTree.JCExpressionStatement)head).expr).meth instanceof JCTree.JCIdent &&
+                (((JCTree.JCIdent) ((JCTree.JCMethodInvocation)((JCTree.JCExpressionStatement)head).expr).meth).name.equals(symbolsTable._super) ||
+                ((JCTree.JCIdent) ((JCTree.JCMethodInvocation)((JCTree.JCExpressionStatement)head).expr).meth).name.equals(symbolsTable._this));
+    }
 }
