@@ -6,14 +6,10 @@ import com.sun.source.tree.MethodTree;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.TypeTag;
-import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.tree.JCTree;
-import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.Name;
-import com.sun.tools.javac.util.Names;
 
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -41,7 +37,14 @@ class ConditionClause {
         this.methodName = javac.nameFromString(clauseRepFormatMatcher.group(2));
         this.clauseRep = clauseRep;
         this.conditionType = conditionType;
+    }
 
+    private ConditionClause(JavacUtils javac, Symbol.MethodSymbol invariantSymbol) {
+        this.javac = javac;
+        this.isNegated = false;
+        this.methodName = invariantSymbol.name;
+        this.clauseRep = invariantSymbol.name.toString();
+        this.conditionType = ContractConditionEnum.INVARIANT;
     }
 
     public String getClauseRep() {
@@ -73,6 +76,12 @@ class ConditionClause {
     public static List<ConditionClause> from(Contract.Requires preconditionClause, JavacUtils javac) {
         return Arrays.stream(preconditionClause.value())
                 .map((String clauseRep) -> new ConditionClause(javac,clauseRep,ContractConditionEnum.PRECONDITION))
+                .collect(Collectors.toList());
+    }
+
+    public static List<ConditionClause> createInvariants(List<Symbol.MethodSymbol> invariants, JavacUtils javac) {
+        return invariants.stream()
+                .map((Symbol.MethodSymbol invariantSymbol) -> new ConditionClause(javac, invariantSymbol))
                 .collect(Collectors.toList());
     }
 

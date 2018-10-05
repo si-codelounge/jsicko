@@ -3,6 +3,7 @@ package ch.usi.si.codelounge.jsicko.tutorials.stack;
 import ch.usi.si.codelounge.jsicko.Contract;
 import static ch.usi.si.codelounge.jsicko.ContractUtils.*;
 
+import java.util.Collection;
 import java.util.stream.IntStream;
 
 /**
@@ -12,7 +13,8 @@ import java.util.stream.IntStream;
 public interface Stack<T> extends Contract<Stack<T>> {
 
     @Invariant
-    default public boolean sizeNonNegative() {
+    @Pure
+    default boolean sizeNonNegative() {
         return size() >= 0;
     }
 
@@ -20,29 +22,30 @@ public interface Stack<T> extends Contract<Stack<T>> {
      * See frame_condition
      */
     @Invariant
-    default public boolean elementsNeverNull() {
+    @Pure
+    default boolean elementsNeverNull() {
         return forAllInts(0, size(), pos -> elementAt(pos) != null);
     }
 
     @Requires("!stack_is_empty")
     @Ensures({"returns_old_last_element", "size_decreases", "pop_frame_condition"})
-    public T pop();
+    T pop();
 
     @Requires({"!stack_is_empty"})
     @Ensures({"returns_last_element"})
     @Pure
-    public T top();
+    T top();
 
     @Requires("element_not_null")
     @Ensures({"push_on_top", "size_increases", "push_frame_condition"})
-    public void push(T element);
+    void push(T element);
 
     @Pure
-    public int size();
+    int size();
 
     @Requires("pos_is_valid")
     @Pure
-    public T elementAt(int pos);
+    T elementAt(int pos);
 
     default boolean stack_is_empty() {
         return size() == 0;
@@ -78,18 +81,26 @@ public interface Stack<T> extends Contract<Stack<T>> {
         return forAllInts(0, lastPos, pos -> old().elementAt(pos).equals(elementAt(pos)));
     }
 
-    default public boolean push_frame_condition() {
+    default boolean push_frame_condition() {
         return frame_condition(old().size());
     }
 
-    default public boolean pop_frame_condition() {
+    default boolean pop_frame_condition() {
         return frame_condition(size());
+    }
+
+    default boolean elems_not_null(Collection<T> elems) {
+        return elems != null;
+    }
+
+    default boolean collection_initializer(Collection<T> elems) {
+        return forAll(elems,elem -> existsInt(0,size(),pos -> elementAt(pos).equals(elem)));
     }
 
     /**
      * Returns a String representation of the Stack.
      * @return a String representation of the Stack.
      */
-    public String toString();
+    String toString();
 
 }
