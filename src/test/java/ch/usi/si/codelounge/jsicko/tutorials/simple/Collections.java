@@ -4,7 +4,6 @@ import ch.usi.si.codelounge.jsicko.Contract;
 import static ch.usi.si.codelounge.jsicko.Contract.old;
 import static ch.usi.si.codelounge.jsicko.ContractUtils.*;
 
-
 import java.util.ArrayList;
 import java.util.List;
 

@@ -214,7 +214,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
             /* define old and static old values table */
             var oldField = declareOldValuesTableField(classDecl,false);
-            var staticOldValuesTableField = declareOldValuesTableField(classDecl,true);
+            declareOldValuesTableField(classDecl,true);
 
             /* Override @old */
             var typeVar = javac.freshObjectTypeVar(null);

@@ -55,4 +55,9 @@ public class BadStack<T> implements Stack<T> {
         return String.valueOf(this.baseObject);
     }
 
+    @Override
+    public void clear() {
+        this.baseObject.clear();
+    }
+
 }

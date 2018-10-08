@@ -48,6 +48,9 @@ public interface Stack<T> extends Contract {
     @Pure
     T elementAt(int pos);
 
+    @Ensures("stack_is_empty")
+    void clear();
+
     @Pure
     default boolean stack_is_empty() {
         return size() == 0;
@@ -115,6 +118,7 @@ public interface Stack<T> extends Contract {
      * Returns a String representation of the Stack.
      * @return a String representation of the Stack.
      */
+    @Pure
     String toString();
 
 }
