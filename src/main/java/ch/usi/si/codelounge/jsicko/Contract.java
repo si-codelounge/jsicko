@@ -3,10 +3,14 @@ package ch.usi.si.codelounge.jsicko;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
 
-public interface Contract<T> {
+public interface Contract {
 
-    default public T old() {
-        throw new RuntimeException("Illegal call of old() method outside a compiled contract");
+    default <X> X old(String rep, X object) {
+        throw new RuntimeException("Illegal call of old(object) method outside a compiled contract");
+    }
+
+    default <T> T old(T object) {
+        throw new RuntimeException("Illegal call of old(object) method outside a compiled contract");
     }
 
     /*
@@ -15,7 +19,7 @@ public interface Contract<T> {
      * equality.
      */
     default public boolean pure() {
-        return this.equals(old());
+        return this.equals(old(this));
     }
 
     /**

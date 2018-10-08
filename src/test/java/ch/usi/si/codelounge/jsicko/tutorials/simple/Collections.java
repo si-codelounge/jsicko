@@ -7,7 +7,7 @@ import static ch.usi.si.codelounge.jsicko.ContractUtils.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public abstract class Collections implements Contract<Collections> {
+public abstract class Collections implements Contract {
 
     @Requires("arg_not_null")
     @Ensures({"returns_collection_sorted", "returns_same_elements_contained"})

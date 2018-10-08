@@ -3,10 +3,7 @@ package ch.usi.si.codelounge.jsicko.plugin.utils;
 import ch.usi.si.codelounge.jsicko.Contract;
 import com.sun.source.tree.MethodTree;
 import com.sun.tools.javac.api.BasicJavacTask;
-import com.sun.tools.javac.code.Symbol;
-import com.sun.tools.javac.code.Type;
-import com.sun.tools.javac.code.TypeTag;
-import com.sun.tools.javac.code.Types;
+import com.sun.tools.javac.code.*;
 import com.sun.tools.javac.comp.Enter;
 import com.sun.tools.javac.comp.MemberEnter;
 import com.sun.tools.javac.tree.JCTree;
@@ -22,6 +19,7 @@ import java.util.stream.Stream;
 public final class JavacUtils {
 
     private final Types types;
+    private final Symtab symtab;
     private final Names symbolsTable;
     private final TreeMaker factory;
     private final Enter enter;
@@ -33,6 +31,7 @@ public final class JavacUtils {
         this.factory = TreeMaker.instance(task.getContext());
         this.enter = Enter.instance(task.getContext());
         this.memberEnter = MemberEnter.instance(task.getContext());
+        this.symtab = Symtab.instance(task.getContext());
     }
 
     public JCTree.JCExpression constructExpression(String... identifiers) {
@@ -114,5 +113,40 @@ public final class JavacUtils {
                 ((JCTree.JCMethodInvocation)((JCTree.JCExpressionStatement)head).expr).meth instanceof JCTree.JCIdent &&
                 (((JCTree.JCIdent) ((JCTree.JCMethodInvocation)((JCTree.JCExpressionStatement)head).expr).meth).name.equals(symbolsTable._super) ||
                 ((JCTree.JCIdent) ((JCTree.JCMethodInvocation)((JCTree.JCExpressionStatement)head).expr).meth).name.equals(symbolsTable._this));
+    }
+
+
+    public Type mapOfStringObjectType() {
+        Type objectType = symtab.objectType;
+        Type stringType = symtab.stringType;
+        Symbol.ClassSymbol mapClassSymbol = symtab.getClassesForName(this.nameFromString("java.util.Map")).iterator().next();
+
+        return new Type.ClassType(
+                Type.noType,
+                List.of(stringType,objectType),
+                mapClassSymbol, TypeMetadata.EMPTY);
+
+    }
+
+    public Symbol oldMethodType() {
+        Symbol.ClassSymbol contractClassSymbol = symtab.getClassesForName(this.nameFromString("ch.usi.si.codelounge.jsicko.Contract")).iterator().next();
+        var member = contractClassSymbol.members().getSymbolsByName(symbolsTable.fromString("old"));
+        return member.iterator().next();
+    }
+
+    public Type.TypeVar freshObjectTypeVar(Symbol owner) {
+        var typeVar = new Type.TypeVar(symbolsTable.fromString("X"),owner,symtab.botType);
+        typeVar.bound = symtab.objectType;
+        return typeVar;
+    }
+
+    public JCTree.JCExpression hashMapOfStringObjectExpression() {
+        var mapTypeIdent = this.constructExpression("java.util.HashMap");
+        var mapTypeArgsList = com.sun.tools.javac.util.List.of(this.constructExpression("java.lang.String"),this.constructExpression("java.lang.Object"));
+        return factory.TypeApply(mapTypeIdent,mapTypeArgsList);
+    }
+
+    public Type stringType() {
+        return symtab.stringType;
     }
 }
