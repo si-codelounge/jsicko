@@ -1,9 +1,15 @@
 package ch.usi.si.codelounge.jsicko;
 
+import ch.usi.si.codelounge.jsicko.plugin.OldValuesTable;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
 
 public interface Contract {
+
+    default OldValuesTable emptyOldValuesTable() {
+        return new OldValuesTable();
+    }
 
     default <X> X old(String rep, X object) {
         throw new RuntimeException("Illegal call of old(object) method outside a compiled contract");

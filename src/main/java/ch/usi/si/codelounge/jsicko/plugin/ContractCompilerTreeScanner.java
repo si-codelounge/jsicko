@@ -9,6 +9,7 @@ import com.sun.tools.javac.code.*;
 import com.sun.tools.javac.tree.JCTree.*;
 
 import javax.lang.model.element.Modifier;
+import javax.lang.model.element.Name;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -125,6 +126,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
                 if (!methodSymbol.isConstructor() && !methodSymbol.isStatic() && !isMarkedPure) {
                     optionalSaveOldState(methodTree, this.currentClassDecl.get());
+                    addLeaveScopeStatement(tryBlock.finalizer);
                 }
 
                 addPreconditions(methodTree, methodDecl.body, requires);
@@ -149,17 +151,24 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         return w;
     }
 
+    private void addLeaveScopeStatement(JCBlock finalizer) {
+        final var factory = javac.getFactory();
+        JCMethodInvocation enterScopeStatement = buildLeaveScopeStatement();
+        finalizer.stats = finalizer.stats.prepend(factory.Exec(enterScopeStatement));
+    }
+
     private void optionalSaveOldState(MethodTree methodTree, JCClassDecl classDecl) {
         final var factory = javac.getFactory();
 
         this.optionalOldMapField.ifPresent((JCVariableDecl oldMapField) -> {
+
             var methodDecl = (JCMethodDecl) methodTree;
             var thisType = factory.This(classDecl.sym.type);
             var kryoMethodExpr = javac.constructExpression("ch.usi.si.codelounge.jsicko.plugin.utils.CloneUtils.kryoClone");
             var cloneCall = factory.Apply(com.sun.tools.javac.util.List.nil(), kryoMethodExpr, com.sun.tools.javac.util.List.of(thisType));
             var literal = factory.Literal("this");
             var params = com.sun.tools.javac.util.List.of(literal, cloneCall);
-            var methodSelect = factory.Select(factory.Ident(oldMapField), javac.nameFromString("put"));
+            var methodSelect = factory.Select(factory.Ident(oldMapField), javac.nameFromString("putValue"));
             var updateCall = factory.Apply(com.sun.tools.javac.util.List.nil(), methodSelect, params);
             System.out.println(factory.Exec(updateCall));
             methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(factory.Exec(updateCall));
@@ -171,11 +180,28 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 var paramCloneCall = factory.Apply(com.sun.tools.javac.util.List.nil(), kryoMethodExpr2, com.sun.tools.javac.util.List.of(paramIdent));
                 var nameLiteral = factory.Literal(param.getName().toString());
                 var mapSetParams = com.sun.tools.javac.util.List.of(nameLiteral, paramCloneCall);
-                var methodSelect2 = factory.Select(factory.Ident(oldMapField), javac.nameFromString("put"));
+                var methodSelect2 = factory.Select(factory.Ident(oldMapField), javac.nameFromString("putValue"));
                 var mapUpdateCall = factory.Apply(com.sun.tools.javac.util.List.nil(), methodSelect2, mapSetParams);
                 methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(factory.Exec(mapUpdateCall));
             }
+
+            JCMethodInvocation enterScopeStatement = buildEnterScopeStatement(methodDecl.sym);
+            methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(factory.Exec(enterScopeStatement));
         });
+    }
+
+    private JCMethodInvocation buildEnterScopeStatement(Symbol.MethodSymbol methodSymbol) {
+        final var factory = javac.getFactory();
+        var enterMethodSelect = factory.Select(factory.Ident(optionalOldMapField.get()), javac.nameFromString("enter"));
+        var methodNameLiteral = factory.Literal(methodSymbol.toString());
+        var enterParams = com.sun.tools.javac.util.List.of((JCExpression)methodNameLiteral);
+        return factory.Apply(com.sun.tools.javac.util.List.nil(), enterMethodSelect, enterParams);
+    }
+
+    private JCMethodInvocation buildLeaveScopeStatement() {
+        final var factory = javac.getFactory();
+        var enterMethodSelect = factory.Select(factory.Ident(optionalOldMapField.get()), javac.nameFromString("leave"));
+        return factory.Apply(com.sun.tools.javac.util.List.nil(), enterMethodSelect, com.sun.tools.javac.util.List.nil());
     }
 
     private void optionalDeclareOldVariableAndMethod(JCClassDecl classDecl) {
@@ -185,12 +211,12 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
             var init = factory.NewClass(null,
                     com.sun.tools.javac.util.List.nil(),
-                    javac.hashMapOfStringObjectExpression(),
+                    javac.oldValuesTableTypeExpression(),
                     com.sun.tools.javac.util.List.nil(),
                     null);
 
             var varSymbol = new Symbol.VarSymbol(Flags.PRIVATE,
-                    javac.nameFromString(Constants.OLD_FIELD_IDENTIFIER_STRING), javac.mapOfStringObjectType(), classDecl.sym);
+                    javac.nameFromString(Constants.OLD_FIELD_IDENTIFIER_STRING), javac.oldValuesTableClassType(), classDecl.sym);
 
             var oldField = factory.VarDef(varSymbol, init);
             this.optionalOldMapField = Optional.of(oldField);
@@ -212,7 +238,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
             var literal = factory.Ident(javac.nameFromString("x0"));
             com.sun.tools.javac.util.List<JCExpression> params = com.sun.tools.javac.util.List.of(literal);
-            var methodSelect = factory.Select(factory.Ident(oldField), javac.nameFromString("get"));
+            var methodSelect = factory.Select(factory.Ident(oldField), javac.nameFromString("getValue"));
             var getCall = factory.Apply(com.sun.tools.javac.util.List.nil(), methodSelect, params);
             var castCall = factory.TypeCast(typeVar.tsym.type, getCall);
             var returnElemStatement = factory.Return(castCall);

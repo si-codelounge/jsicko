@@ -116,14 +116,12 @@ public final class JavacUtils {
     }
 
 
-    public Type mapOfStringObjectType() {
-        Type objectType = symtab.objectType;
-        Type stringType = symtab.stringType;
-        Symbol.ClassSymbol mapClassSymbol = symtab.getClassesForName(this.nameFromString("java.util.Map")).iterator().next();
+    public Type oldValuesTableClassType() {
+        Symbol.ClassSymbol mapClassSymbol = symtab.getClassesForName(this.nameFromString("ch.usi.si.codelounge.jsicko.plugin.OldValuesTable")).iterator().next();
 
         return new Type.ClassType(
                 Type.noType,
-                List.of(stringType,objectType),
+                List.nil(),
                 mapClassSymbol, TypeMetadata.EMPTY);
 
     }
@@ -140,10 +138,9 @@ public final class JavacUtils {
         return typeVar;
     }
 
-    public JCTree.JCExpression hashMapOfStringObjectExpression() {
-        var mapTypeIdent = this.constructExpression("java.util.HashMap");
-        var mapTypeArgsList = com.sun.tools.javac.util.List.of(this.constructExpression("java.lang.String"),this.constructExpression("java.lang.Object"));
-        return factory.TypeApply(mapTypeIdent,mapTypeArgsList);
+    public JCTree.JCExpression oldValuesTableTypeExpression() {
+        var mapTypeIdent = this.constructExpression("ch.usi.si.codelounge.jsicko.plugin.OldValuesTable");
+        return mapTypeIdent;
     }
 
     public Type stringType() {

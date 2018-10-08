@@ -16,6 +16,10 @@ public class OldValuesTable {
         private String methodSignature;
         private Map<String, Object> scopeTable;
 
+        private MethodScope() {
+            this("<unknown>");
+        }
+
         private MethodScope(String methodSignature) {
             this.methodSignature = methodSignature;
             this.scopeTable = new HashMap<>();
