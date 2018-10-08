@@ -15,7 +15,6 @@ public class ContractCompilerTaskListener implements TaskListener {
         this.task = task;
     }
 
-
     @Override
     public void finished(TaskEvent e) {
         if (e.getKind() != TaskEvent.Kind.ENTER) {
