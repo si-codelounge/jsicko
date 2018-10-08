@@ -6,19 +6,14 @@ import com.sun.source.tree.*;
 import com.sun.source.util.TreeScanner;
 import com.sun.tools.javac.api.BasicJavacTask;
 import com.sun.tools.javac.code.*;
-import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.*;
-import org.jetbrains.annotations.Nullable;
 
 import javax.lang.model.element.Modifier;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.Stack;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-class ContractCompilerTreeScanner extends TreeScanner<Void, Stack<Tree>> {
+class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
     private final JavacUtils javac;
 
@@ -38,13 +33,13 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Stack<Tree>> {
     }
 
     @Override
-    public Void visitCompilationUnit(CompilationUnitTree node, Stack<Tree> relevantScope) {
+    public Void visitCompilationUnit(CompilationUnitTree node, Deque<Tree> relevantScope) {
         this.currentCompilationUnitTree = Optional.of(node);
         return super.visitCompilationUnit(node, relevantScope);
     }
 
     @Override
-    public Void visitClass(ClassTree classTree, Stack<Tree> relevantScope) {
+    public Void visitClass(ClassTree classTree, Deque<Tree> relevantScope) {
 
         this.hasContract = false;
 
@@ -94,7 +89,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Stack<Tree>> {
     }
 
     @Override
-    public Void visitMethod(MethodTree methodTree, Stack<Tree> relevantScope) {
+    public Void visitMethod(MethodTree methodTree, Deque<Tree> relevantScope) {
         var methodDecl = (JCMethodDecl) methodTree;
 
         this.currentMethodTree = Optional.of(methodTree);
@@ -308,7 +303,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Stack<Tree>> {
     }
 
     @Override
-    public Void visitReturn(ReturnTree node, Stack<Tree> relevantScope) {
+    public Void visitReturn(ReturnTree node, Deque<Tree> relevantScope) {
         final var factory = javac.getFactory();
 
         var returnNode = (JCReturn) node;
@@ -324,7 +319,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Stack<Tree>> {
     }
 
     @Override
-    public Void visitLambdaExpression(LambdaExpressionTree node, Stack<Tree> relevantScope) {
+    public Void visitLambdaExpression(LambdaExpressionTree node, Deque<Tree> relevantScope) {
         Void v;
         relevantScope.push(node);
         v = super.visitLambdaExpression(node, relevantScope);
@@ -333,7 +328,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Stack<Tree>> {
     }
 
     @Override
-    public Void visitMethodInvocation(MethodInvocationTree node, Stack<Tree> relevantScope) {
+    public Void visitMethodInvocation(MethodInvocationTree node, Deque<Tree> relevantScope) {
         var factory = javac.getFactory();
         var w = super.visitMethodInvocation(node, relevantScope);
         var methodInvocation = ((JCMethodInvocation)node);
@@ -345,7 +340,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Stack<Tree>> {
         return w;
     }
 
-    private boolean isScopeInPureMethod(Stack<Tree> relevantScope) {
+    private boolean isScopeInPureMethod(Deque<Tree> relevantScope) {
         Optional<JCMethodDecl> optionalLastMethod = getLastMethodInScope(relevantScope);
 
         return optionalLastMethod.isPresent() &&
@@ -353,13 +348,8 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Stack<Tree>> {
                 optionalLastMethod.get().sym.getAnnotationsByType(Contract.Pure.class) != null;
     }
 
-    private Optional<JCMethodDecl> getLastMethodInScope(Stack<Tree> relevantScope) {
-        Optional<Tree> optionalLastMethod = Optional.empty();
-        var reverseIterator = relevantScope.listIterator(relevantScope.size());
-
-        while((optionalLastMethod.isEmpty() || !(optionalLastMethod.get() instanceof JCMethodDecl)) && reverseIterator.hasPrevious()) {
-            optionalLastMethod = Optional.of(reverseIterator.previous());
-        }
+    private Optional<JCMethodDecl> getLastMethodInScope(Deque<Tree> relevantScope) {
+        Optional<Tree> optionalLastMethod = relevantScope.stream().dropWhile(t -> !(t instanceof JCMethodDecl)).findFirst();
         return optionalLastMethod.map(JCMethodDecl.class::cast);
     }
 }
