@@ -1,6 +1,7 @@
 package ch.usi.si.codelounge.jsicko.tutorials.stack;
 
 import ch.usi.si.codelounge.jsicko.Contract;
+import static ch.usi.si.codelounge.jsicko.Contract.old;
 import static ch.usi.si.codelounge.jsicko.ContractUtils.*;
 
 import java.util.Collection;

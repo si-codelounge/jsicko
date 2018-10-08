@@ -18,6 +18,12 @@ public class CollectionsTest {
     }
 
     @Test
+    public void mutableSortTest() throws Throwable {
+        List<Integer> list = new ArrayList<>(List.of(3,2,1));
+        Collections.mutableSort(list);
+    }
+
+    @Test
     public void collectionsBadSortTest() throws Throwable {
         List<Integer> list = new ArrayList<>(List.of(3,2,1));
         Executable textFixture = () -> Collections.badSort(list);

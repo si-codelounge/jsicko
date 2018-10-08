@@ -9,7 +9,6 @@ import com.sun.tools.javac.code.*;
 import com.sun.tools.javac.tree.JCTree.*;
 
 import javax.lang.model.element.Modifier;
-import javax.lang.model.element.Name;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -21,7 +20,8 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
     private boolean hasContract;
 
     private Optional<JCVariableDecl> currentMethodReturnVarDecl = Optional.empty();
-    private Optional<JCVariableDecl> optionalOldMapField = Optional.empty();
+    private Optional<JCVariableDecl> optionalOldValuesTableField = Optional.empty();
+    private Optional<JCVariableDecl> optionalStaticOldValuesTableField = Optional.empty();
     private Optional<JCMethodDecl> overriddenOldMethod = Optional.empty();
     private Optional<CompilationUnitTree> currentCompilationUnitTree = Optional.empty();
     private Optional<JCClassDecl> currentClassDecl = Optional.empty();
@@ -59,7 +59,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 this.classInvariants = ConditionClause.createInvariants(javac.findInvariants(this.currentClassDecl.get()), javac);
             } else {
                 this.currentClassDecl = Optional.empty();
-                this.optionalOldMapField = Optional.empty();
+                this.optionalOldValuesTableField = Optional.empty();
                 this.currentMethodReturnVarDecl = Optional.empty();
                 this.overriddenOldMethod = Optional.empty();
                 this.classInvariants = List.of();
@@ -95,7 +95,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
         this.currentMethodTree = Optional.of(methodTree);
 
-        List<Symbol> overriddenMethods = List.of();
+        final List<Symbol> overriddenMethods;
         this.currentMethodReturnVarDecl = Optional.empty();
 
         if (this.hasContract &&
@@ -111,7 +111,6 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
             if (!overriddenMethods.contains(methodSymbol))
                 overriddenMethods.add(methodSymbol);
 
-
             if (overriddenMethods.size() > 0) {
                 Void w = null;
                 JCTry tryBlock = null;
@@ -124,9 +123,9 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 tryBlock = boxMethodBody(methodTree);
                 optionalDeclareReturnValueCatcher(methodTree);
 
-                if (!methodSymbol.isConstructor() && !methodSymbol.isStatic() && !isMarkedPure) {
+                if (!methodSymbol.isConstructor() /* && !methodSymbol.isStatic() */ && !isMarkedPure) {
                     optionalSaveOldState(methodTree, this.currentClassDecl.get());
-                    addLeaveScopeStatement(tryBlock.finalizer);
+                    addLeaveScopeStatement(tryBlock.finalizer, methodDecl.sym.isStatic());
                 }
 
                 addPreconditions(methodTree, methodDecl.body, requires);
@@ -151,27 +150,31 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         return w;
     }
 
-    private void addLeaveScopeStatement(JCBlock finalizer) {
+    private void addLeaveScopeStatement(JCBlock finalizer, boolean isStatic) {
         final var factory = javac.getFactory();
-        JCMethodInvocation enterScopeStatement = buildLeaveScopeStatement();
+        JCMethodInvocation enterScopeStatement = buildLeaveScopeStatement(isStatic);
         finalizer.stats = finalizer.stats.prepend(factory.Exec(enterScopeStatement));
     }
 
     private void optionalSaveOldState(MethodTree methodTree, JCClassDecl classDecl) {
         final var factory = javac.getFactory();
 
-        this.optionalOldMapField.ifPresent((JCVariableDecl oldMapField) -> {
+        this.optionalOldValuesTableField.ifPresent((JCVariableDecl oldValuesTableField) -> {
 
             var methodDecl = (JCMethodDecl) methodTree;
-            var thisType = factory.This(classDecl.sym.type);
-            var kryoMethodExpr = javac.constructExpression("ch.usi.si.codelounge.jsicko.plugin.utils.CloneUtils.kryoClone");
-            var cloneCall = factory.Apply(com.sun.tools.javac.util.List.nil(), kryoMethodExpr, com.sun.tools.javac.util.List.of(thisType));
-            var literal = factory.Literal("this");
-            var params = com.sun.tools.javac.util.List.of(literal, cloneCall);
-            var methodSelect = factory.Select(factory.Ident(oldMapField), javac.nameFromString("putValue"));
-            var updateCall = factory.Apply(com.sun.tools.javac.util.List.nil(), methodSelect, params);
-            System.out.println(factory.Exec(updateCall));
-            methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(factory.Exec(updateCall));
+            var oldValuesTableFieldDecl = (methodDecl.sym.isStatic() ? this.optionalStaticOldValuesTableField.get(): oldValuesTableField );
+
+            if (!methodDecl.sym.isStatic()) {
+                var thisType = factory.This(classDecl.sym.type);
+                var kryoMethodExpr = javac.constructExpression("ch.usi.si.codelounge.jsicko.plugin.utils.CloneUtils.kryoClone");
+                var cloneCall = factory.Apply(com.sun.tools.javac.util.List.nil(), kryoMethodExpr, com.sun.tools.javac.util.List.of(thisType));
+                var literal = factory.Literal("this");
+                var params = com.sun.tools.javac.util.List.of(literal, cloneCall);
+                var methodSelect = factory.Select(factory.Ident(oldValuesTableFieldDecl), javac.nameFromString("putValue"));
+                var updateCall = factory.Apply(com.sun.tools.javac.util.List.nil(), methodSelect, params);
+                System.out.println(factory.Exec(updateCall));
+                methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(factory.Exec(updateCall));
+            }
 
             for (VariableTree param: methodTree.getParameters()) {
                 JCVariableDecl paramDecl = (JCVariableDecl) param;
@@ -180,7 +183,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 var paramCloneCall = factory.Apply(com.sun.tools.javac.util.List.nil(), kryoMethodExpr2, com.sun.tools.javac.util.List.of(paramIdent));
                 var nameLiteral = factory.Literal(param.getName().toString());
                 var mapSetParams = com.sun.tools.javac.util.List.of(nameLiteral, paramCloneCall);
-                var methodSelect2 = factory.Select(factory.Ident(oldMapField), javac.nameFromString("putValue"));
+                var methodSelect2 = factory.Select(factory.Ident(oldValuesTableFieldDecl), javac.nameFromString("putValue"));
                 var mapUpdateCall = factory.Apply(com.sun.tools.javac.util.List.nil(), methodSelect2, mapSetParams);
                 methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(factory.Exec(mapUpdateCall));
             }
@@ -192,39 +195,28 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
     private JCMethodInvocation buildEnterScopeStatement(Symbol.MethodSymbol methodSymbol) {
         final var factory = javac.getFactory();
-        var enterMethodSelect = factory.Select(factory.Ident(optionalOldMapField.get()), javac.nameFromString("enter"));
+        var enterMethodSelect = factory.Select(factory.Ident(methodSymbol.isStatic() ? optionalStaticOldValuesTableField.get(): optionalOldValuesTableField.get()), javac.nameFromString("enter"));
         var methodNameLiteral = factory.Literal(methodSymbol.toString());
         var enterParams = com.sun.tools.javac.util.List.of((JCExpression)methodNameLiteral);
         return factory.Apply(com.sun.tools.javac.util.List.nil(), enterMethodSelect, enterParams);
     }
 
-    private JCMethodInvocation buildLeaveScopeStatement() {
+    private JCMethodInvocation buildLeaveScopeStatement(boolean isStatic) {
         final var factory = javac.getFactory();
-        var enterMethodSelect = factory.Select(factory.Ident(optionalOldMapField.get()), javac.nameFromString("leave"));
+        var enterMethodSelect = factory.Select(factory.Ident(isStatic ? optionalStaticOldValuesTableField.get(): optionalOldValuesTableField.get()), javac.nameFromString("leave"));
         return factory.Apply(com.sun.tools.javac.util.List.nil(), enterMethodSelect, com.sun.tools.javac.util.List.nil());
     }
 
     private void optionalDeclareOldVariableAndMethod(JCClassDecl classDecl) {
         final var factory = javac.getFactory();
 
-        if (!this.optionalOldMapField.isPresent()) {
+        if (!this.optionalOldValuesTableField.isPresent()) {
 
-            var init = factory.NewClass(null,
-                    com.sun.tools.javac.util.List.nil(),
-                    javac.oldValuesTableTypeExpression(),
-                    com.sun.tools.javac.util.List.nil(),
-                    null);
-
-            var varSymbol = new Symbol.VarSymbol(Flags.PRIVATE,
-                    javac.nameFromString(Constants.OLD_FIELD_IDENTIFIER_STRING), javac.oldValuesTableClassType(), classDecl.sym);
-
-            var oldField = factory.VarDef(varSymbol, init);
-            this.optionalOldMapField = Optional.of(oldField);
-            this.currentClassDecl.get().defs = this.currentClassDecl.get().defs.prepend(oldField);
-            classDecl.sym.members().enter(varSymbol);
+            /* define old and static old values table */
+            var oldField = declareOldValuesTableField(classDecl,false);
+            var staticOldValuesTableField = declareOldValuesTableField(classDecl,true);
 
             /* Override @old */
-
             var typeVar = javac.freshObjectTypeVar(null);
 
             var baseType = new Type.MethodType(com.sun.tools.javac.util.List.of(javac.stringType(),typeVar),
@@ -234,7 +226,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
             var overriddenOldMethodType = new Type.ForAll(com.sun.tools.javac.util.List.of(typeVar), baseType);
 
-            var overriddenOldMethodSymbol = new Symbol.MethodSymbol(Flags.PUBLIC, javac.nameFromString(Constants.OLD_METHOD_IDENTIFIER_STRING), overriddenOldMethodType, classDecl.sym);
+            var overriddenOldMethodSymbol = new Symbol.MethodSymbol(Flags.PUBLIC, javac.nameFromString(Constants.INSTANCE_OLD_METHOD_IDENTIFIER_STRING), overriddenOldMethodType, classDecl.sym);
 
             var literal = factory.Ident(javac.nameFromString("x0"));
             com.sun.tools.javac.util.List<JCExpression> params = com.sun.tools.javac.util.List.of(literal);
@@ -258,6 +250,35 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
             System.err.println(" Decl: " + this.currentClassDecl);
         }
+    }
+
+    private JCVariableDecl declareOldValuesTableField(JCClassDecl classDecl, boolean isStatic) {
+        final var factory = javac.getFactory();
+
+        var flags = (isStatic ? Flags.STATIC | Flags.PUBLIC : Flags.PRIVATE ) | Flags.FINAL ;
+        var fieldName = (isStatic ? Constants.STATIC_OLD_FIELD_IDENTIFIER_STRING : Constants.OLD_FIELD_IDENTIFIER_STRING);
+
+        var init = factory.NewClass(null,
+                com.sun.tools.javac.util.List.nil(),
+                javac.oldValuesTableTypeExpression(),
+                com.sun.tools.javac.util.List.nil(),
+                null);
+
+        var varSymbol = new Symbol.VarSymbol(flags,
+                javac.nameFromString(fieldName), javac.oldValuesTableClassType(), classDecl.sym);
+
+        var varDef = factory.VarDef(varSymbol, init);
+
+        if (isStatic)
+            this.optionalStaticOldValuesTableField = Optional.of(varDef);
+        else
+            this.optionalOldValuesTableField = Optional.of(varDef);
+
+        this.currentClassDecl.get().defs = this.currentClassDecl.get().defs.prepend(varDef);
+
+        classDecl.sym.members().enter(varSymbol);
+
+        return varDef;
     }
 
     private JCTry boxMethodBody(MethodTree methodTree) {
@@ -358,13 +379,32 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         var factory = javac.getFactory();
         var w = super.visitMethodInvocation(node, relevantScope);
         var methodInvocation = ((JCMethodInvocation)node);
-        if (isScopeInPureMethod(relevantScope) &&  methodInvocation.meth.toString().equals("old")) {
+        var isScopeInStaticMethod = isScopeInStaticMethod(relevantScope);
+
+        if (isScopeInPureMethod(relevantScope) && methodInvocation.meth.toString().equals("old")) {
             var paramName = methodInvocation.args.head.toString();
-            methodInvocation.args = methodInvocation.args.prepend(factory.Literal(paramName));
-            System.out.println("Rewrote old(X) method invocation: " + node);
+            if (isScopeInStaticMethod) {
+                methodInvocation.meth = factory.Select(javac.constructExpression("ch.usi.si.codelounge.jsicko.Contract"),javac.nameFromString(Constants.STATIC_OLD_METHOD_IDENTIFIER_STRING));
+                methodInvocation.args = methodInvocation.args.prepend(factory.Literal(paramName));
+                methodInvocation.args = methodInvocation.args.prepend(factory.ClassLiteral(getLastMethodInScope(relevantScope).get().sym.enclClass()));
+            } else {
+                methodInvocation.meth = factory.Ident(javac.nameFromString(Constants.INSTANCE_OLD_METHOD_IDENTIFIER_STRING));
+                methodInvocation.args = methodInvocation.args.prepend(factory.Literal(paramName));
+            }
+
+            System.out.println("Rewrote old(X) method invocation to: " + node);
         }
         return w;
     }
+
+    private boolean isScopeInStaticMethod(Deque<Tree> relevantScope) {
+        Optional<JCMethodDecl> optionalLastMethod = getLastMethodInScope(relevantScope);
+
+        return optionalLastMethod.isPresent() &&
+                optionalLastMethod.get() instanceof JCMethodDecl &&
+                optionalLastMethod.get().sym.isStatic();
+    }
+
 
     private boolean isScopeInPureMethod(Deque<Tree> relevantScope) {
         Optional<JCMethodDecl> optionalLastMethod = getLastMethodInScope(relevantScope);
