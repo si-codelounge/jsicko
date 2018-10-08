@@ -25,6 +25,13 @@ public abstract class Collections implements Contract {
     }
 
     @Requires("arg_not_null")
+    @Ensures({"param_collection_sorted", "param_same_elements_contained"})
+    public static <T extends Comparable<? super T>> void badMutableSort(List<T> list) {
+        list.addAll(list);
+        list.sort(T::compareTo);
+    }
+
+    @Requires("arg_not_null")
     @Ensures({"returns_collection_sorted", "returns_same_elements_contained"})
     public static <T extends Comparable<? super T>> List<T> badSort(List<T> list) {
         return list;
@@ -51,7 +58,7 @@ public abstract class Collections implements Contract {
 
     @Pure
     private static <T extends Comparable<? super T>> boolean param_same_elements_contained(List<T> list) {
-        return forAll(old(list), (T elem) -> count(list, e -> e.equals(elem)) == count(list,e -> e.equals(elem)));
+        return forAll(old(list), (T elem) -> count(old(list), e -> e.equals(elem)) == count(list,e -> e.equals(elem)));
     }
 
     @Pure
