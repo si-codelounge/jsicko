@@ -2,7 +2,6 @@ package ch.usi.si.codelounge.jsicko.tutorials.stack;
 
 import ch.usi.si.codelounge.jsicko.Contract;
 import ch.usi.si.codelounge.jsicko.tutorials.stack.impl.BadStack;
-import org.checkerframework.common.value.qual.IntRange;
 import org.junit.jupiter.api.Test;
 
 import java.util.stream.Collectors;

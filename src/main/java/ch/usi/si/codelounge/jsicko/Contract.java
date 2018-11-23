@@ -16,6 +16,7 @@ public interface Contract {
         throw new RuntimeException("Illegal call of instanceOld(rep,object) method outside a compiled contract");
     }
 
+    @SuppressWarnings("unchecked")
     static <X> X staticOld(Class<? extends Contract> clazz, String rep, X object) {
         try {
             var staticOldValuesTableField = clazz.getDeclaredField(Constants.STATIC_OLD_FIELD_IDENTIFIER_STRING);
