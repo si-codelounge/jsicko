@@ -49,7 +49,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
             var classDecl = (JCClassDecl) classTree;
 
             List<Type> contracts = retrieveContractTypes(classDecl.sym.type);
-            System.out.println("Contracts for " + classTree.getSimpleName() + " are " + contracts);
+            javac.logNote("Contracts interfaces for class " + classTree.getSimpleName() + ": " + contracts);
 
             this.hasContract = !classDecl.sym.type.isInterface() && !contracts.isEmpty();
 
@@ -102,7 +102,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 currentCompilationUnitTree.isPresent() &&
                 !methodDecl.equals(this.overriddenOldMethod.get()) &&
                 !methodTree.getModifiers().getFlags().contains(Modifier.PRIVATE)) {
-            System.out.println("Visiting Declared Method in a Class w/Contract: " + methodTree.getName() + " w return type " + methodTree.getReturnType());
+            javac.logNote("Visiting method with contract: " + methodDecl.sym.toString());
 
             var methodSymbol = methodDecl.sym;
 
@@ -138,8 +138,8 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 if (!isMarkedPure) {
                     addInvariants(methodTree, tryBlock.finalizer);
                 }
-                System.out.println("Code of Instrumented Method");
-                System.out.println(methodTree);
+                javac.logNote("Code of Instrumented Method");
+                javac.logNote(methodTree.toString());
                 return w;
             }
         }
@@ -172,7 +172,6 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 var params = com.sun.tools.javac.util.List.of(literal, cloneCall);
                 var methodSelect = factory.Select(factory.Ident(oldValuesTableFieldDecl), javac.nameFromString("putValue"));
                 var updateCall = factory.Apply(com.sun.tools.javac.util.List.nil(), methodSelect, params);
-                System.out.println(factory.Exec(updateCall));
                 methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(factory.Exec(updateCall));
             }
 
@@ -238,7 +237,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
             var overriddenOldMethodBody = factory.Block(0, com.sun.tools.javac.util.List.of(returnElemStatement));
             var overriddenOldMethod = factory.MethodDef(overriddenOldMethodSymbol, overriddenOldMethodBody);
 
-            // Strange fix.
+            // Strange fix. Do NOT remove this.
             overriddenOldMethod.params.head.sym.adr = 0;
             overriddenOldMethod.params.last().sym.adr = 1;
 
@@ -246,9 +245,6 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
             classDecl.sym.members().enter(overriddenOldMethodSymbol);
 
             this.overriddenOldMethod = Optional.of(overriddenOldMethod);
-            System.out.println(overriddenOldMethod);
-
-            System.err.println(" Decl: " + this.currentClassDecl);
         }
     }
 
@@ -321,24 +317,24 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
     }
 
     private void addPreconditions(MethodTree method, JCBlock block, List<Contract.Requires> requireClauses) {
-        System.out.println("For method " + method.getName() + " - creating precondition check " + requireClauses);
-        var allEnsuresClauses = requireClauses.stream().flatMap(clauseGroup -> ConditionClause.from(clauseGroup, javac).stream());
-        addConditions(method, block, allEnsuresClauses);
+        var allRequiresClauses = requireClauses.stream().flatMap(clauseGroup -> ConditionClause.from(clauseGroup, javac).stream()).collect(Collectors.toList());
+        javac.logNote("For method " + ((JCMethodDecl) method).sym + " - creating precondition checks " + allRequiresClauses);
+        addConditions(method, block, allRequiresClauses);
     }
 
     private void addPostconditions(MethodTree method, JCBlock block, List<Contract.Ensures> ensuresClauses) {
-        System.out.println("For method " + method.getName() + " - creating postcondition check " + ensuresClauses);
-        var allEnsuresClauses = ensuresClauses.stream().flatMap(clauseGroup -> ConditionClause.from(clauseGroup, javac).stream());
+        var allEnsuresClauses = ensuresClauses.stream().flatMap(clauseGroup -> ConditionClause.from(clauseGroup, javac).stream()).collect(Collectors.toList());
+        javac.logNote("For method " + ((JCMethodDecl) method).sym + " - creating postcondition checks " + allEnsuresClauses);
         addConditions(method, block, allEnsuresClauses);
     }
 
     private void addInvariants(MethodTree method, JCBlock block) {
-        System.out.println("For method " + method.getName() + " - creating invariant checks " + this.classInvariants);
-        addConditions(method, block, this.classInvariants.stream());
+        javac.logNote("For method " + ((JCMethodDecl) method).sym + " - creating invariant checks " + this.classInvariants);
+        addConditions(method, block, this.classInvariants);
     }
 
-    private void addConditions(MethodTree method, JCBlock block, Stream<ConditionClause> conditions) {
-        conditions.forEach((ConditionClause ensuresClause) -> {
+    private void addConditions(MethodTree method, JCBlock block, List<ConditionClause> conditions) {
+        conditions.stream().forEach((ConditionClause ensuresClause) -> {
             ensuresClause.resolveContractMethod(currentClassDecl.get());
             JCIf check = ensuresClause.createConditionCheck(method, ensuresClause);
             if (javac.isSuperOrThisConstructorCall(block.stats.head)) {
@@ -376,6 +372,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
     @Override
     public Void visitMethodInvocation(MethodInvocationTree node, Deque<Tree> relevantScope) {
+        var oldNodeRep = node.toString();
         var factory = javac.getFactory();
         var w = super.visitMethodInvocation(node, relevantScope);
         var methodInvocation = ((JCMethodInvocation)node);
@@ -392,7 +389,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 methodInvocation.args = methodInvocation.args.prepend(factory.Literal(paramName));
             }
 
-            System.out.println("Rewrote old(X) method invocation to: " + node);
+            javac.logNote("Rewrote " + oldNodeRep + " method invocation to: " + node.toString());
         }
         return w;
     }

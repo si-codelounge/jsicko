@@ -138,4 +138,8 @@ class ConditionClause {
         this.resolvedMethodSymbol = contractMethod;
     }
 
+    @Override
+    public String toString() {
+        return this.conditionType + " " + this.clauseRep;
+    }
 }

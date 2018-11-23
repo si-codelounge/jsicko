@@ -8,10 +8,9 @@ import com.sun.tools.javac.comp.Enter;
 import com.sun.tools.javac.comp.MemberEnter;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
-import com.sun.tools.javac.util.List;
-import com.sun.tools.javac.util.Name;
-import com.sun.tools.javac.util.Names;
+import com.sun.tools.javac.util.*;
 
+import javax.tools.JavaFileObject;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -24,6 +23,7 @@ public final class JavacUtils {
     private final TreeMaker factory;
     private final Enter enter;
     private final MemberEnter memberEnter;
+    private final Log log;
 
     public JavacUtils(BasicJavacTask task) {
         this.symbolsTable = Names.instance(task.getContext());
@@ -32,6 +32,7 @@ public final class JavacUtils {
         this.enter = Enter.instance(task.getContext());
         this.memberEnter = MemberEnter.instance(task.getContext());
         this.symtab = Symtab.instance(task.getContext());
+        this.log = Log.instance(task.getContext());
     }
 
     public JCTree.JCExpression constructExpression(String... identifiers) {
@@ -145,5 +146,21 @@ public final class JavacUtils {
 
     public Type stringType() {
         return symtab.stringType;
+    }
+
+    public void logError(int pos, String message) {
+        log.rawError(pos, message);
+    }
+
+    public void logWarning(JCDiagnostic.DiagnosticPosition pos, String message) {
+        log.strictWarning(pos, "warning", message, message, message);
+    }
+
+    public void logNote(JavaFileObject fileObject, String message) {
+        log.mandatoryNote(fileObject,new JCDiagnostic.Note("compiler", "proc.messager", "[jSicko] " + message));
+    }
+
+    public void logNote(String message) {
+        this.logNote(null,message);
     }
 }
