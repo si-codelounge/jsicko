@@ -3,18 +3,14 @@ package ch.usi.si.codelounge.jsicko.plugin.utils;
 import ch.usi.si.codelounge.jsicko.Contract;
 import com.sun.source.tree.MethodTree;
 import com.sun.tools.javac.api.BasicJavacTask;
-import com.sun.tools.javac.code.Symbol;
-import com.sun.tools.javac.code.Type;
-import com.sun.tools.javac.code.TypeTag;
-import com.sun.tools.javac.code.Types;
+import com.sun.tools.javac.code.*;
 import com.sun.tools.javac.comp.Enter;
 import com.sun.tools.javac.comp.MemberEnter;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
-import com.sun.tools.javac.util.List;
-import com.sun.tools.javac.util.Name;
-import com.sun.tools.javac.util.Names;
+import com.sun.tools.javac.util.*;
 
+import javax.tools.JavaFileObject;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -22,10 +18,12 @@ import java.util.stream.Stream;
 public final class JavacUtils {
 
     private final Types types;
+    private final Symtab symtab;
     private final Names symbolsTable;
     private final TreeMaker factory;
     private final Enter enter;
     private final MemberEnter memberEnter;
+    private final Log log;
 
     public JavacUtils(BasicJavacTask task) {
         this.symbolsTable = Names.instance(task.getContext());
@@ -33,6 +31,8 @@ public final class JavacUtils {
         this.factory = TreeMaker.instance(task.getContext());
         this.enter = Enter.instance(task.getContext());
         this.memberEnter = MemberEnter.instance(task.getContext());
+        this.symtab = Symtab.instance(task.getContext());
+        this.log = Log.instance(task.getContext());
     }
 
     public JCTree.JCExpression constructExpression(String... identifiers) {
@@ -114,5 +114,53 @@ public final class JavacUtils {
                 ((JCTree.JCMethodInvocation)((JCTree.JCExpressionStatement)head).expr).meth instanceof JCTree.JCIdent &&
                 (((JCTree.JCIdent) ((JCTree.JCMethodInvocation)((JCTree.JCExpressionStatement)head).expr).meth).name.equals(symbolsTable._super) ||
                 ((JCTree.JCIdent) ((JCTree.JCMethodInvocation)((JCTree.JCExpressionStatement)head).expr).meth).name.equals(symbolsTable._this));
+    }
+
+
+    public Type oldValuesTableClassType() {
+        Symbol.ClassSymbol mapClassSymbol = symtab.getClassesForName(this.nameFromString("ch.usi.si.codelounge.jsicko.plugin.OldValuesTable")).iterator().next();
+
+        return new Type.ClassType(
+                Type.noType,
+                List.nil(),
+                mapClassSymbol, TypeMetadata.EMPTY);
+
+    }
+
+    public Symbol oldMethodType() {
+        Symbol.ClassSymbol contractClassSymbol = symtab.getClassesForName(this.nameFromString("ch.usi.si.codelounge.jsicko.Contract")).iterator().next();
+        var member = contractClassSymbol.members().getSymbolsByName(symbolsTable.fromString("old"));
+        return member.iterator().next();
+    }
+
+    public Type.TypeVar freshObjectTypeVar(Symbol owner) {
+        var typeVar = new Type.TypeVar(symbolsTable.fromString("X"),owner,symtab.botType);
+        typeVar.bound = symtab.objectType;
+        return typeVar;
+    }
+
+    public JCTree.JCExpression oldValuesTableTypeExpression() {
+        var mapTypeIdent = this.constructExpression("ch.usi.si.codelounge.jsicko.plugin.OldValuesTable");
+        return mapTypeIdent;
+    }
+
+    public Type stringType() {
+        return symtab.stringType;
+    }
+
+    public void logError(int pos, String message) {
+        log.rawError(pos, message);
+    }
+
+    public void logWarning(JCDiagnostic.DiagnosticPosition pos, String message) {
+        log.strictWarning(pos, "warning", message, message, message);
+    }
+
+    public void logNote(JavaFileObject fileObject, String message) {
+        log.mandatoryNote(fileObject,new JCDiagnostic.Note("compiler", "proc.messager", "[jSicko] " + message));
+    }
+
+    public void logNote(String message) {
+        this.logNote(null,message);
     }
 }

@@ -5,7 +5,7 @@ import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
 import com.sun.tools.javac.api.BasicJavacTask;
 
-import java.util.Stack;
+import java.util.ArrayDeque;
 
 public class ContractCompilerTaskListener implements TaskListener {
 
@@ -15,13 +15,12 @@ public class ContractCompilerTaskListener implements TaskListener {
         this.task = task;
     }
 
-
     @Override
     public void finished(TaskEvent e) {
         if (e.getKind() != TaskEvent.Kind.ENTER) {
             return;
         }
-        e.getCompilationUnit().accept(new ContractCompilerTreeScanner((BasicJavacTask) task), new Stack<>());
+        e.getCompilationUnit().accept(new ContractCompilerTreeScanner((BasicJavacTask) task), new ArrayDeque<>());
     }
 
 }

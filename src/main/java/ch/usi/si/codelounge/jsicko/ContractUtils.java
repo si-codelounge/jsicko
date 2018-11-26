@@ -22,7 +22,7 @@ public abstract class ContractUtils {
      * @param consequent the consequent of the implication.
      * @return <code>true</code> iff antecedent implies consequent.
      */
-    static boolean implies(boolean antecedent, boolean consequent) {
+    public static boolean implies(boolean antecedent, boolean consequent) {
         return !antecedent || consequent;
     }
 
@@ -32,7 +32,7 @@ public abstract class ContractUtils {
      * @param b the second argument of the equality.
      * @return <code>true</code> iff antecedent is equal to consequent.
      */
-    static boolean iff(boolean a, boolean b) {
+    public static boolean iff(boolean a, boolean b) {
         return a == b;
     }
 

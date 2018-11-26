@@ -56,4 +56,11 @@ public class GoodStack<T> implements Stack<T> {
         return String.valueOf(this.baseObject);
     }
 
+    @Override
+    public void clear() {
+        if (this.size() > 0) {
+            pop();
+            clear();
+        }
+    }
 }

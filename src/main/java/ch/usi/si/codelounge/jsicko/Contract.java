@@ -1,12 +1,34 @@
 package ch.usi.si.codelounge.jsicko;
 
+import ch.usi.si.codelounge.jsicko.plugin.Constants;
+import ch.usi.si.codelounge.jsicko.plugin.OldValuesTable;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
 
-public interface Contract<T> {
+public interface Contract {
 
-    default public T old() {
-        throw new RuntimeException("Illegal call of old() method outside a compiled contract");
+    default OldValuesTable emptyOldValuesTable() {
+        return new OldValuesTable();
+    }
+
+    default <X> X instanceOld(String rep, X object) {
+        throw new RuntimeException("Illegal call of instanceOld(rep,object) method outside a compiled contract");
+    }
+
+    @SuppressWarnings("unchecked")
+    static <X> X staticOld(Class<? extends Contract> clazz, String rep, X object) {
+        try {
+            var staticOldValuesTableField = clazz.getDeclaredField(Constants.STATIC_OLD_FIELD_IDENTIFIER_STRING);
+            var staticOldValuesTable = (OldValuesTable) staticOldValuesTableField.get(null);
+            return (X) staticOldValuesTable.getValue(rep);
+        } catch(NoSuchFieldException | IllegalAccessException e) {
+            throw new RuntimeException("Illegal call of staticOld(" + clazz + ",rep,object) method outside a compiled contract", e);
+        }
+    }
+
+    static <T> T old(T object) {
+        throw new RuntimeException("Illegal call of old(object) method outside a compiled contract");
     }
 
     /*
@@ -15,7 +37,7 @@ public interface Contract<T> {
      * equality.
      */
     default public boolean pure() {
-        return this.equals(old());
+        return this.equals(old(this));
     }
 
     /**

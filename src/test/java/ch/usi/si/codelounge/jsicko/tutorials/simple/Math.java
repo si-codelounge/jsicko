@@ -1,11 +1,12 @@
 package ch.usi.si.codelounge.jsicko.tutorials.simple;
 
 import ch.usi.si.codelounge.jsicko.Contract;
+import static ch.usi.si.codelounge.jsicko.Contract.old;
 
-public abstract class Math implements Contract<Math> {
+public abstract class Math implements Contract {
 
     @Requires("non_negative_arg")
-    @Ensures("returns_approximately_equal_to_square_of_arg")
+    @Ensures({"returns_approximately_equal_to_square_of_arg"})
     public static double sqrt(double arg) {
         return java.lang.Math.sqrt(arg);
     }

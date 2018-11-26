@@ -52,4 +52,12 @@ public class GoodStackTest {
         foo.pop();
     }
 
+    @Test
+    public void clearTest() throws Throwable {
+        GoodStack<String> foo = new GoodStack<>();
+        for (int i = 0; i < 10; i++)
+            foo.push(String.valueOf(i));
+        foo.clear();
+    }
+
 }

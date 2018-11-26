@@ -4,6 +4,9 @@ import ch.usi.si.codelounge.jsicko.Contract;
 import ch.usi.si.codelounge.jsicko.tutorials.stack.impl.BadStack;
 import org.junit.jupiter.api.Test;
 
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -38,4 +41,10 @@ public class BadStackTest {
         assertThrows(Contract.PostconditionViolation.class, () -> foo.push("elem2"));
     }
 
+    @Test
+    public void clearTest() throws Throwable {
+        var baseCollection = IntStream.range(0,10).boxed().collect(Collectors.toList());
+        BadStack<Integer> foo = new BadStack<>(baseCollection);
+        foo.clear();
+    }
 }
