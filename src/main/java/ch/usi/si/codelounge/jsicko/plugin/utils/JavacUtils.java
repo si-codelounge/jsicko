@@ -32,6 +32,7 @@ import com.sun.tools.javac.util.*;
 
 import javax.tools.JavaFileObject;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -44,6 +45,7 @@ public final class JavacUtils {
     private final Enter enter;
     private final MemberEnter memberEnter;
     private final Log log;
+    private final JCDiagnostic.Factory diagnosticFactory;
 
     public JavacUtils(BasicJavacTask task) {
         this.symbolsTable = Names.instance(task.getContext());
@@ -53,6 +55,7 @@ public final class JavacUtils {
         this.memberEnter = MemberEnter.instance(task.getContext());
         this.symtab = Symtab.instance(task.getContext());
         this.log = Log.instance(task.getContext());
+        this.diagnosticFactory = JCDiagnostic.Factory.instance(task.getContext());
     }
 
     public JCTree.JCExpression constructExpression(String... identifiers) {
@@ -168,19 +171,19 @@ public final class JavacUtils {
         return symtab.stringType;
     }
 
-    public void logError(int pos, String message) {
-        log.rawError(pos, message);
+    public void logError(JavaFileObject fileObject, JCDiagnostic.DiagnosticPosition pos, String message) {
+        var diagnosticError = diagnosticFactory.error(JCDiagnostic.DiagnosticFlag.MANDATORY,
+                new DiagnosticSource(fileObject,log), pos, new JCDiagnostic.Error("compiler", "proc.messager", message));
+        log.report(diagnosticError);
     }
 
     public void logWarning(JCDiagnostic.DiagnosticPosition pos, String message) {
-        log.strictWarning(pos, "warning", message, message, message);
+        log.mandatoryWarning(pos, new JCDiagnostic.Warning("compiler", "proc.messager", message));
     }
 
-    public void logNote(JavaFileObject fileObject, String message) {
-        log.mandatoryNote(fileObject,new JCDiagnostic.Note("compiler", "proc.messager", "[jSicko] " + message));
+    public void logNote(JavaFileObject fileObject, JCDiagnostic.DiagnosticPosition pos, String message) {
+        var sourcedDiagnosticNote = diagnosticFactory.create(null, EnumSet.of(JCDiagnostic.DiagnosticFlag.MANDATORY), new DiagnosticSource(fileObject,log), pos, new JCDiagnostic.Note("compiler", "proc.messager", "[jSicko] " + message));
+        log.report(sourcedDiagnosticNote);
     }
 
-    public void logNote(String message) {
-        this.logNote(null,message);
-    }
 }

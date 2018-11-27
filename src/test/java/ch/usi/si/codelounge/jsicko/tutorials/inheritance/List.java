@@ -22,11 +22,26 @@ package ch.usi.si.codelounge.jsicko.tutorials.inheritance;
 
 import ch.usi.si.codelounge.jsicko.Contract;
 
-//public class List<T> extends AbstractCollection<T> implements Contract {
-//
-//    public List() {
-//
-//    }
-//
-//
-//}
+public class List<T> extends AbstractCollection<T> implements Contract {
+
+    private final java.util.List<T> baseCollection;
+
+    public List() {
+        this.baseCollection = new java.util.ArrayList<T>();
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return false;
+    }
+
+    @Override
+    public int size() {
+        return 0;
+    }
+
+    @Override
+    public boolean contains(Object o) {
+        return false;
+    }
+}

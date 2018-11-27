@@ -105,17 +105,17 @@ class ConditionClause {
                 .collect(Collectors.toList());
     }
 
-    JCTree.JCIf createConditionCheck(MethodTree method, ConditionClause clause) {
-        return javac.getFactory().at(((JCTree) method).pos).If(createConditionCheckExpression(method, clause),
-                createConditionCheckBlock( method, clause),
+    JCTree.JCIf createConditionCheck(JCTree.JCMethodDecl methodDecl, ConditionClause clause) {
+        return javac.getFactory().at(methodDecl.pos).If(createConditionCheckExpression(methodDecl, clause),
+                createConditionCheckBlock(methodDecl, clause),
                 null);
     }
 
-    private JCTree.JCExpression createConditionCheckExpression(MethodTree method, ConditionClause conditionClause) {
+    private JCTree.JCExpression createConditionCheckExpression(JCTree.JCMethodDecl methodDecl, ConditionClause conditionClause) {
         var factory = javac.getFactory();
 
         if (!resolvedMethodSymbol.isPresent()) {
-            return factory.Erroneous(com.sun.tools.javac.util.List.of((JCTree)method));
+            return factory.Erroneous(com.sun.tools.javac.util.List.of(methodDecl));
         }
 
         var clauseSymbol = resolvedMethodSymbol.get();
@@ -133,10 +133,10 @@ class ConditionClause {
         return factory.Parens(potentiallyNegatedCall);
     }
 
-    private JCTree.JCBlock createConditionCheckBlock(MethodTree method, ConditionClause conditionClause) {
+    private JCTree.JCBlock createConditionCheckBlock(JCTree.JCMethodDecl methodDecl, ConditionClause conditionClause) {
         var factory = javac.getFactory();
 
-        String errorMessagePrefix = String.format("%s %s violated on method %s", conditionClause.getConditionType(), conditionClause.getClauseRep(), method.getName().toString());
+        String errorMessagePrefix = String.format("%s %s violated on method %s", conditionClause.getConditionType(), conditionClause.getClauseRep(), methodDecl.getName().toString());
 
         return factory.Block(0, com.sun.tools.javac.util.List.of(
                 factory.Throw(

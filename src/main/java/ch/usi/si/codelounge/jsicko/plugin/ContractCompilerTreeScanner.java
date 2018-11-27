@@ -69,7 +69,9 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
             var classDecl = (JCClassDecl) classTree;
 
             List<Type> contracts = retrieveContractTypes(classDecl.sym.type);
-            javac.logNote("Contracts interfaces for class " + classTree.getSimpleName() + ": " + contracts);
+            javac.logNote(this.currentCompilationUnitTree.get().getSourceFile(),
+                    classDecl.pos(),
+                    "Contract interfaces for class " + classTree.getSimpleName() + ": " + contracts);
 
             this.hasContract = !classDecl.sym.type.isInterface() && !contracts.isEmpty();
 
@@ -121,8 +123,8 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         if (this.hasContract &&
                 currentCompilationUnitTree.isPresent() &&
                 !methodDecl.equals(this.overriddenOldMethod.get()) &&
-                !methodTree.getModifiers().getFlags().contains(Modifier.PRIVATE)) {
-            javac.logNote("Visiting method with contract: " + methodDecl.sym.toString());
+                !methodTree.getModifiers().getFlags().contains(Modifier.PRIVATE) &&
+                !methodTree.getModifiers().getFlags().contains(Modifier.ABSTRACT)) {
 
             var methodSymbol = methodDecl.sym;
 
@@ -148,18 +150,18 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                     addLeaveScopeStatement(tryBlock.finalizer, methodDecl.sym.isStatic());
                 }
 
-                addPreconditions(methodTree, methodDecl.body, requires);
+                addPreconditions(methodDecl, methodDecl.body, requires);
 
                 relevantScope.push(methodTree);
                 w = super.visitMethod(methodTree, relevantScope);
                 relevantScope.pop();
 
-                addPostconditions(methodTree, tryBlock.finalizer, ensures);
-                if (!isMarkedPure) {
-                    addInvariants(methodTree, tryBlock.finalizer);
+                addPostconditions(methodDecl, tryBlock.finalizer, ensures);
+                if (!isMarkedPure && !methodSymbol.isStatic()) {
+                    addInvariants(methodDecl, tryBlock.finalizer);
                 }
-                javac.logNote("Code of Instrumented Method");
-                javac.logNote(methodTree.toString());
+                javac.logNote(this.currentCompilationUnitTree.get().getSourceFile(),
+                        methodDecl.pos(), "Code of Instrumented " + methodDecl.sym + " method: " + methodTree.toString());
                 return w;
             }
         }
@@ -195,12 +197,11 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(factory.Exec(updateCall));
             }
 
-            for (VariableTree param: methodTree.getParameters()) {
-                JCVariableDecl paramDecl = (JCVariableDecl) param;
+            for (JCVariableDecl paramDecl: methodDecl.getParameters()) {
                 JCExpression paramIdent = factory.Ident(paramDecl);
                 var kryoMethodExpr2 = javac.constructExpression("ch.usi.si.codelounge.jsicko.plugin.utils.CloneUtils.kryoClone");
                 var paramCloneCall = factory.Apply(com.sun.tools.javac.util.List.nil(), kryoMethodExpr2, com.sun.tools.javac.util.List.of(paramIdent));
-                var nameLiteral = factory.Literal(param.getName().toString());
+                var nameLiteral = factory.Literal(paramDecl.getName().toString());
                 var mapSetParams = com.sun.tools.javac.util.List.of(nameLiteral, paramCloneCall);
                 var methodSelect2 = factory.Select(factory.Ident(oldValuesTableFieldDecl), javac.nameFromString("putValue"));
                 var mapUpdateCall = factory.Apply(com.sun.tools.javac.util.List.nil(), methodSelect2, mapSetParams);
@@ -336,31 +337,48 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         }
     }
 
-    private void addPreconditions(MethodTree method, JCBlock block, List<Contract.Requires> requireClauses) {
+    private void addPreconditions(JCMethodDecl methodDecl, JCBlock block, List<Contract.Requires> requireClauses) {
         var allRequiresClauses = requireClauses.stream().flatMap(clauseGroup -> ConditionClause.from(clauseGroup, javac).stream()).collect(Collectors.toList());
-        javac.logNote("For method " + ((JCMethodDecl) method).sym + " - creating precondition checks " + allRequiresClauses);
-        addConditions(method, block, allRequiresClauses);
+        if (allRequiresClauses.size() > 0) {
+            javac.logNote(this.currentCompilationUnitTree.get().getSourceFile(),
+                    methodDecl.pos(),
+                    "For method " + methodDecl.sym + " - creating precondition checks " + allRequiresClauses);
+        }
+        addConditions(methodDecl, block, allRequiresClauses);
     }
 
-    private void addPostconditions(MethodTree method, JCBlock block, List<Contract.Ensures> ensuresClauses) {
+    private void addPostconditions(JCMethodDecl methodDecl, JCBlock block, List<Contract.Ensures> ensuresClauses) {
         var allEnsuresClauses = ensuresClauses.stream().flatMap(clauseGroup -> ConditionClause.from(clauseGroup, javac).stream()).collect(Collectors.toList());
-        javac.logNote("For method " + ((JCMethodDecl) method).sym + " - creating postcondition checks " + allEnsuresClauses);
-        addConditions(method, block, allEnsuresClauses);
+        if (allEnsuresClauses.size() > 0) {
+            javac.logNote(this.currentCompilationUnitTree.get().getSourceFile(),
+                    methodDecl.pos(),
+                    "For method " + methodDecl.sym + " - creating postcondition checks " + allEnsuresClauses);
+        }
+        addConditions(methodDecl, block, allEnsuresClauses);
     }
 
-    private void addInvariants(MethodTree method, JCBlock block) {
-        javac.logNote("For method " + ((JCMethodDecl) method).sym + " - creating invariant checks " + this.classInvariants);
-        addConditions(method, block, this.classInvariants);
+    private void addInvariants(JCMethodDecl methodDecl, JCBlock block) {
+        if (this.classInvariants.size() > 0) {
+            javac.logNote(this.currentCompilationUnitTree.get().getSourceFile(),
+                    methodDecl.pos(), "For method " + methodDecl.sym + " - creating invariant checks " + this.classInvariants);
+        }
+        addConditions(methodDecl, block, this.classInvariants);
     }
 
-    private void addConditions(MethodTree method, JCBlock block, List<ConditionClause> conditions) {
+    private void addConditions(JCMethodDecl methodDecl, JCBlock block, List<ConditionClause> conditions) {
         conditions.stream().forEach((ConditionClause ensuresClause) -> {
             ensuresClause.resolveContractMethod(currentClassDecl.get());
-            JCIf check = ensuresClause.createConditionCheck(method, ensuresClause);
-            if (javac.isSuperOrThisConstructorCall(block.stats.head)) {
-                block.stats = block.stats.tail.prepend(check).prepend(block.stats.head);
+            if (!ensuresClause.isResolved()) {
+                javac.logError(this.currentCompilationUnitTree.get().getSourceFile(),
+                        methodDecl.pos(),
+                        "On method " + methodDecl.sym + ", contract condition " + ensuresClause.getClauseRep() + " not resolved, method not found.");
             } else {
-                block.stats = block.stats.prepend(check);
+                JCIf check = ensuresClause.createConditionCheck(methodDecl, ensuresClause);
+                if (javac.isSuperOrThisConstructorCall(block.stats.head)) {
+                    block.stats = block.stats.tail.prepend(check).prepend(block.stats.head);
+                } else {
+                    block.stats = block.stats.prepend(check);
+                }
             }
         });
     }
@@ -409,7 +427,9 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 methodInvocation.args = methodInvocation.args.prepend(factory.Literal(paramName));
             }
 
-            javac.logNote("Rewrote " + oldNodeRep + " method invocation to: " + node.toString());
+            javac.logNote(this.currentCompilationUnitTree.get().getSourceFile(),
+                    methodInvocation.pos(),
+                    "Rewrote " + oldNodeRep + " method invocation to: " + node.toString());
         }
         return w;
     }
