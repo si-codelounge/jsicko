@@ -6,7 +6,7 @@
 
     <groupId>ch.usi.si.codelounge</groupId>
     <artifactId>jSicko</artifactId>
-    <version>0.1-SNAPSHOT</version>
+    <version>1.0.0-M1</version>
 
     <properties>
         <maven.version>3.3.9</maven.version>
@@ -107,11 +107,6 @@
             <artifactId>junit-jupiter-api</artifactId>
             <version>5.1.0</version>
             <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.jooq</groupId>
-            <artifactId>jool</artifactId>
-            <version>0.9.13</version>
         </dependency>
         <dependency>
             <groupId>com.google.guava</groupId>

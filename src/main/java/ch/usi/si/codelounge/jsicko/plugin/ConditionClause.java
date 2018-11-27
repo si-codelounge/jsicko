@@ -1,3 +1,23 @@
+/*
+ * Copyright (C) 2018 Andrea Mocci and CodeLounge https://codelounge.si.usi.ch
+ *
+ * This file is part of jSicko - Java SImple Contract checKer.
+ *
+ *  jSicko is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ * jSicko is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with jSicko.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
+
 package ch.usi.si.codelounge.jsicko.plugin;
 
 import ch.usi.si.codelounge.jsicko.Contract;
@@ -85,17 +105,17 @@ class ConditionClause {
                 .collect(Collectors.toList());
     }
 
-    JCTree.JCIf createConditionCheck(MethodTree method, ConditionClause clause) {
-        return javac.getFactory().at(((JCTree) method).pos).If(createConditionCheckExpression(method, clause),
-                createConditionCheckBlock( method, clause),
+    JCTree.JCIf createConditionCheck(JCTree.JCMethodDecl methodDecl, ConditionClause clause) {
+        return javac.getFactory().at(methodDecl.pos).If(createConditionCheckExpression(methodDecl, clause),
+                createConditionCheckBlock(methodDecl, clause),
                 null);
     }
 
-    private JCTree.JCExpression createConditionCheckExpression(MethodTree method, ConditionClause conditionClause) {
+    private JCTree.JCExpression createConditionCheckExpression(JCTree.JCMethodDecl methodDecl, ConditionClause conditionClause) {
         var factory = javac.getFactory();
 
         if (!resolvedMethodSymbol.isPresent()) {
-            return factory.Erroneous(com.sun.tools.javac.util.List.of((JCTree)method));
+            return factory.Erroneous(com.sun.tools.javac.util.List.of(methodDecl));
         }
 
         var clauseSymbol = resolvedMethodSymbol.get();
@@ -113,10 +133,10 @@ class ConditionClause {
         return factory.Parens(potentiallyNegatedCall);
     }
 
-    private JCTree.JCBlock createConditionCheckBlock(MethodTree method, ConditionClause conditionClause) {
+    private JCTree.JCBlock createConditionCheckBlock(JCTree.JCMethodDecl methodDecl, ConditionClause conditionClause) {
         var factory = javac.getFactory();
 
-        String errorMessagePrefix = String.format("%s %s violated on method %s", conditionClause.getConditionType(), conditionClause.getClauseRep(), method.getName().toString());
+        String errorMessagePrefix = String.format("%s %s violated on method %s", conditionClause.getConditionType(), conditionClause.getClauseRep(), methodDecl.getName().toString());
 
         return factory.Block(0, com.sun.tools.javac.util.List.of(
                 factory.Throw(

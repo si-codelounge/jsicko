@@ -1,3 +1,23 @@
+/*
+ * Copyright (C) 2018 Andrea Mocci and CodeLounge https://codelounge.si.usi.ch
+ *
+ * This file is part of jSicko - Java SImple Contract checKer.
+ *
+ *  jSicko is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ * jSicko is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with jSicko.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
+
 package ch.usi.si.codelounge.jsicko.plugin.utils;
 
 import ch.usi.si.codelounge.jsicko.Contract;
@@ -12,6 +32,7 @@ import com.sun.tools.javac.util.*;
 
 import javax.tools.JavaFileObject;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -24,6 +45,7 @@ public final class JavacUtils {
     private final Enter enter;
     private final MemberEnter memberEnter;
     private final Log log;
+    private final JCDiagnostic.Factory diagnosticFactory;
 
     public JavacUtils(BasicJavacTask task) {
         this.symbolsTable = Names.instance(task.getContext());
@@ -33,6 +55,7 @@ public final class JavacUtils {
         this.memberEnter = MemberEnter.instance(task.getContext());
         this.symtab = Symtab.instance(task.getContext());
         this.log = Log.instance(task.getContext());
+        this.diagnosticFactory = JCDiagnostic.Factory.instance(task.getContext());
     }
 
     public JCTree.JCExpression constructExpression(String... identifiers) {
@@ -148,19 +171,19 @@ public final class JavacUtils {
         return symtab.stringType;
     }
 
-    public void logError(int pos, String message) {
-        log.rawError(pos, message);
+    public void logError(JavaFileObject fileObject, JCDiagnostic.DiagnosticPosition pos, String message) {
+        var diagnosticError = diagnosticFactory.error(JCDiagnostic.DiagnosticFlag.MANDATORY,
+                new DiagnosticSource(fileObject,log), pos, new JCDiagnostic.Error("compiler", "proc.messager", message));
+        log.report(diagnosticError);
     }
 
     public void logWarning(JCDiagnostic.DiagnosticPosition pos, String message) {
-        log.strictWarning(pos, "warning", message, message, message);
+        log.mandatoryWarning(pos, new JCDiagnostic.Warning("compiler", "proc.messager", message));
     }
 
-    public void logNote(JavaFileObject fileObject, String message) {
-        log.mandatoryNote(fileObject,new JCDiagnostic.Note("compiler", "proc.messager", "[jSicko] " + message));
+    public void logNote(JavaFileObject fileObject, JCDiagnostic.DiagnosticPosition pos, String message) {
+        var sourcedDiagnosticNote = diagnosticFactory.create(null, EnumSet.of(JCDiagnostic.DiagnosticFlag.MANDATORY), new DiagnosticSource(fileObject,log), pos, new JCDiagnostic.Note("compiler", "proc.messager", "[jSicko] " + message));
+        log.report(sourcedDiagnosticNote);
     }
 
-    public void logNote(String message) {
-        this.logNote(null,message);
-    }
 }
