@@ -1,0 +1,32 @@
+image: maven:3-jdk-11
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+
+stages:
+  - build
+  - test
+  - mirroring
+
+
+cache:
+  paths:
+  - .m2/repository/
+
+build:
+  stage: build
+  script:
+  - mvn compile
+
+test:
+  stage: test
+  script:
+  - mvn test
+
+github_mirroring:
+  stage: mirroring
+  script:
+    - git push -f https://$GITHUB_USERNAME:$GITHUB_TOKEN@github.com/si-codelounge/jsicko.git HEAD:master
+  only:
+    - master
+    
