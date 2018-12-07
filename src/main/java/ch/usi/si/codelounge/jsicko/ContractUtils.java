@@ -47,6 +47,23 @@ public abstract class ContractUtils {
     }
 
     /**
+     * Represents a boolean implication with an else condition.
+     *
+     * This utility method is used when you need to express a pair of implications where
+     * the antecedent of the second is the negation of the antecedent of the first,
+     * thus representing a logic if-then-else.
+     * @param antecedent the antecedent of the implication.
+     * @param consequent the consequent of the implication.
+     * @param elseCondition the consequent when considering the negated antecedent.
+     * @return <code>true</code> iff antecedent implies consequent and !antecedent implies elseCondition.
+     */
+    public static boolean implies(boolean antecedent, boolean consequent, boolean elseCondition) {
+        return (!antecedent || consequent) &&
+                (antecedent || elseCondition);
+    }
+
+
+    /**
      * Represents logical equality (if and only if), also called biconditional.
      * @param a the first argument of the equality.
      * @param b the second argument of the equality.
