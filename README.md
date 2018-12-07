@@ -64,3 +64,64 @@ Essentially, jSicko checks first the preconditions, then boxes the body of the m
 jSicko supports contract inheritance (meaning that overridden methods inherit contracts from superclasses and interfaces), old values (by using the static `old` method in the `Contract` class), and class invariants.
 
 For more examples and description of features, please check the official [jSicko Tutorials](https://github.com/si-codelounge/jsicko-tutorials) project.
+
+## Current version and usage with maven
+
+The last version of jSicko is `1.0.0-M2`, and it is published in bintray.com. If you are using maven, you must add the bintray repository into your `pom.xml`:
+
+```xml
+<repository>
+    <snapshots>
+        <enabled>false</enabled>
+    </snapshots>
+    <id>bintray-codelounge-ch.usi.si.codelounge</id>
+    <name>bintray</name>
+    <url>https://dl.bintray.com/codelounge/ch.usi.si.codelounge</url>
+</repository>
+```  
+
+Thus, you can add the following dependency:
+
+```xml
+<dependency>
+    <groupId>ch.usi.si.codelounge</groupId>
+    <artifactId>jSicko</artifactId>
+    <version>1.0.0-M2</version>
+</dependency>
+```      
+
+Finally, you need to enable the compiler plugin as an option of the maven compiler plugin:
+
+```xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-compiler-plugin</artifactId>
+    <version>3.8.0</version>
+    <executions>
+        <execution>
+            <id>compile</id>
+            <goals>
+                <goal>compile</goal>
+            </goals>
+            <configuration>
+                <compilerArgs>
+                    <arg>-Xplugin:JSickoContractCompiler</arg>
+                </compilerArgs>
+            </configuration>
+        </execution>
+        <execution>
+            <id>test-compile</id>
+            <goals>
+                <goal>testCompile</goal>
+            </goals>
+            <configuration>
+                <compilerArgs>
+                    <arg>-Xplugin:JSickoContractCompiler</arg>
+                </compilerArgs>
+            </configuration>
+        </execution>
+    </executions>
+</plugin>
+```                
+
+For instructions on how to run it with your IDE, please check the official [jSicko Tutorials](https://github.com/si-codelounge/jsicko-tutorials) project.
