@@ -123,7 +123,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         if (this.hasContract &&
                 currentCompilationUnitTree.isPresent() &&
                 !methodDecl.equals(this.overriddenOldMethod.get()) &&
-                !methodTree.getModifiers().getFlags().contains(Modifier.PRIVATE) &&
+                methodTree.getModifiers().getFlags().contains(Modifier.PUBLIC) &&
                 !methodTree.getModifiers().getFlags().contains(Modifier.ABSTRACT)) {
 
             var methodSymbol = methodDecl.sym;

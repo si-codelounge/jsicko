@@ -6,7 +6,7 @@
 
     <groupId>ch.usi.si.codelounge</groupId>
     <artifactId>jSicko</artifactId>
-    <version>1.0.0-M1</version>
+    <version>1.0.0-M2</version>
 
     <properties>
         <maven.version>3.3.9</maven.version>
@@ -14,6 +14,14 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <jdk.version>1.10</jdk.version>
     </properties>
+
+<distributionManagement>
+                <repository>
+                <id>bintray-codelounge-ch.usi.si.codelounge</id>
+                <name>codelounge-ch.usi.si.codelounge</name>
+                <url>https://api.bintray.com/maven/codelounge/ch.usi.si.codelounge/jSicko/;publish=1</url>
+                </repository>
+</distributionManagement>
 
     <build>
         <pluginManagement>
