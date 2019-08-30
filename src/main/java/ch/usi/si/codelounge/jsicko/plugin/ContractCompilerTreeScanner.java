@@ -140,12 +140,12 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 List<Contract.Requires> requires = overriddenMethods.stream().flatMap((Symbol overriddenMethod) -> Arrays.stream(overriddenMethod.getAnnotationsByType(Contract.Requires.class))).collect(Collectors.toList());
                 List<Contract.Ensures> ensures = overriddenMethods.stream().flatMap((Symbol overriddenMethod) -> Arrays.stream(overriddenMethod.getAnnotationsByType(Contract.Ensures.class))).collect(Collectors.toList());
 
-                var isMarkedPure = overriddenMethods.stream().flatMap((Symbol overriddenMethod) -> Arrays.stream(overriddenMethod.getAnnotationsByType(Contract.Pure.class))).collect(Collectors.toList()).size() > 0;
+                var isMarkedPure = isAnyMethodMarkedAsOrMustBePure(overriddenMethods);
 
                 tryBlock = boxMethodBody(methodTree);
                 optionalDeclareReturnValueCatcher(methodTree);
 
-                if (!methodSymbol.isConstructor() /* && !methodSymbol.isStatic() */ && !isMarkedPure) {
+                if (!methodSymbol.isConstructor() && !isMarkedPure) {
                     optionalSaveOldState(methodTree, this.currentClassDecl.get());
                     addLeaveScopeStatement(tryBlock.finalizer, methodDecl.sym.isStatic());
                 }
@@ -170,6 +170,26 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         var w = super.visitMethod(methodTree, relevantScope);
         relevantScope.pop();
         return w;
+    }
+
+    private boolean isAnyMethodMarkedAsOrMustBePure(List<Symbol> methodSymbols) {
+        return methodSymbols.stream().anyMatch((Symbol methodSymbol) -> isMarkedAsPure(methodSymbol) || isSpecialPureMethod(methodSymbol));
+    }
+
+    private boolean isMarkedAsPure(Symbol symbol) {
+        return symbol.getAnnotationsByType(Contract.Pure.class).length > 0;
+    }
+
+    private boolean isSpecialPureMethod(Symbol symbol) {
+        /**
+         * Issue #13: java.util.Collection#iterator method is exploited by Kryo to serialize collections. 
+         * jSicko must thus consider it as as pure.
+         */
+        var isIteratorMethod = symbol.type.toString().equals("()java.util.Iterator<E>") && 
+            symbol.owner.toString().equals("java.util.Collection") &&
+            symbol.name.toString().equals("iterator");
+        
+        return isIteratorMethod;
     }
 
     private void addLeaveScopeStatement(JCBlock finalizer, boolean isStatic) {

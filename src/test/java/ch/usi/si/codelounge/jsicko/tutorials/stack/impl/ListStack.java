@@ -87,7 +87,6 @@ public class ListStack<T> extends ArrayList<T> implements Stack<T> {
     }
 
     public Iterator<T> iterator() {
-        System.out.println("CIAO");
         return super.iterator();
     }
 }
