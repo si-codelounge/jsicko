@@ -139,7 +139,7 @@ public interface Stack<T> extends Contract {
 
     @Pure
     default boolean when_found(T e, int returns) {
-    return implies(0 <= returns && returns < size(), e.equals(elementAt(returns)));
+    return implies(0 <= returns && returns < size(), () -> e.equals(elementAt(returns)));
     }
 
 

@@ -25,6 +25,7 @@ import com.google.common.collect.Ordering;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.BinaryOperator;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
@@ -41,10 +42,23 @@ public abstract class ContractUtils {
      * @param antecedent the antecedent of the implication.
      * @param consequent the consequent of the implication.
      * @return <code>true</code> iff antecedent implies consequent.
+     * @deprecated this method does not (obviously) short-circuit the consequent. Use {@link #implies(boolean, BooleanSupplier)} instead.  
      */
+    @Deprecated
     public static boolean implies(boolean antecedent, boolean consequent) {
         return !antecedent || consequent;
     }
+
+    /**
+     * Represents boolean implication.
+     * @param antecedent the antecedent of the implication.
+     * @param consequent the consequent of the implication.
+     * @return <code>true</code> iff antecedent implies consequent.
+     */
+    public static boolean implies(boolean antecedent, BooleanSupplier consequent) {
+        return !antecedent || consequent.getAsBoolean();
+    }
+
 
     /**
      * Represents a boolean implication with an else condition.
@@ -57,9 +71,9 @@ public abstract class ContractUtils {
      * @param elseCondition the consequent when considering the negated antecedent.
      * @return <code>true</code> iff antecedent implies consequent and !antecedent implies elseCondition.
      */
-    public static boolean implies(boolean antecedent, boolean consequent, boolean elseCondition) {
-        return (!antecedent || consequent) &&
-                (antecedent || elseCondition);
+    public static boolean implies(boolean antecedent, BooleanSupplier consequent, BooleanSupplier elseCondition) {
+        return (!antecedent || consequent.getAsBoolean()) &&
+                (antecedent || elseCondition.getAsBoolean());
     }
 
 
@@ -75,6 +89,8 @@ public abstract class ContractUtils {
 
     /**
      * Implication as a binary operator.
+     * 
+     * If you use this implies operator, note that the consequent is always pre-evaluated before the implication itself.
      */
     public static BinaryOperator<Boolean> implies = ((Boolean antecedent, Boolean consequent) -> !antecedent || consequent);
 
