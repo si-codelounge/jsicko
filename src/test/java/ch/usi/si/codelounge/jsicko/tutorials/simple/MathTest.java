@@ -24,6 +24,7 @@ import ch.usi.si.codelounge.jsicko.Contract;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class MathTest {
@@ -45,9 +46,26 @@ public class MathTest {
         assertThrows(Contract.PostconditionViolation.class, textFixture);
     }
 
-    @Test void arrayMaxTest() throws Throwable {
+    @Test void arrayMaxTestNullViolatesPrecondition() throws Throwable {
         Executable textFixture = () -> Math.max(null);
         assertThrows(Contract.PreconditionViolation.class, textFixture);
+    }
+
+    @Test void arrayMaxTestEmptyViolatesPrecondition() throws Throwable {
+        Executable textFixture = () -> Math.max(new int[0]);
+        assertThrows(Contract.PreconditionViolation.class, textFixture);
+    }
+
+    @Test void arrayMaxTestOneElement() {
+        int[] elems = {1};
+        var maxElem = Math.max(elems);
+        assertEquals(maxElem,1);
+    }
+
+    @Test void arrayMaxTestTwoElements() {
+        int[] elems = {1,2};
+        var maxElem = Math.max(elems);
+        assertEquals(maxElem,2);
     }
 
 }

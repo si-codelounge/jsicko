@@ -21,7 +21,10 @@
 package ch.usi.si.codelounge.jsicko.tutorials.simple;
 
 import ch.usi.si.codelounge.jsicko.Contract;
+import ch.usi.si.codelounge.jsicko.Contract.Ensures;
+
 import static ch.usi.si.codelounge.jsicko.Contract.old;
+import static ch.usi.si.codelounge.jsicko.ContractUtils.*;
 
 public abstract class Math implements Contract {
 
@@ -47,12 +50,7 @@ public abstract class Math implements Contract {
         return java.lang.Math.abs((returns * returns) - arg) < 0.001;
     }
 
-    // Issue #10
-    @Requires({"nonnull", "nonempty"})
-    public static int max(int[] a) {
-        return 0;
-    }
-
+    // Issue #10: Contract clause checking order reverses declaration order
     @Pure
     public static boolean nonnull(int[] a) { 
         return a != null; 
@@ -63,5 +61,20 @@ public abstract class Math implements Contract {
         return a.length > 0; 
     }
 
+    @Pure
+    private static boolean returns_contained(double returns, int[] a) {
+        return existsInt(0, a.length, idx -> a[idx] == returns);
+    }
 
+    @Pure
+    private static boolean returns_max(double returns, int[] a) {
+        return forAllInts(0, a.length, idx -> a[idx] <= returns);
+    }
+
+    @Requires({"nonnull", "nonempty"})
+    @Ensures({"returns_contained", "returns_max"})
+    public static int max(int[] a) {
+        return java.util.Arrays.stream(a).max().getAsInt();
+    }
+    // End of method exercising bug of Issue #10
 }
