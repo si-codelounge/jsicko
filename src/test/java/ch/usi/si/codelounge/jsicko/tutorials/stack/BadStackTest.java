@@ -67,4 +67,6 @@ public class BadStackTest {
         BadStack<Integer> foo = new BadStack<>(baseCollection);
         foo.clear();
     }
+
+    
 }

@@ -71,6 +71,9 @@ public interface Stack<T> extends Contract {
     @Ensures("stack_is_empty")
     void clear();
 
+    @Ensures("when_found")
+    int indexOf(T e); 
+       
     @Pure
     default boolean stack_is_empty() {
         return size() == 0;
@@ -133,6 +136,12 @@ public interface Stack<T> extends Contract {
     default boolean collection_initializer(Collection<T> elems) {
         return forAll(elems,elem -> existsInt(0,size(),pos -> elementAt(pos).equals(elem)));
     }
+
+    @Pure
+    default boolean when_found(T e, int returns) {
+    return implies(0 <= returns && returns < size(), e.equals(elementAt(returns)));
+    }
+
 
     /**
      * Returns a String representation of the Stack.

@@ -80,4 +80,11 @@ public class GoodStackTest {
         foo.clear();
     }
 
+    @Test
+    public void testIndexOf() {
+        GoodStack<Integer> s = new GoodStack<>();
+        s.push(3);
+        s.indexOf(9);  // to trigger the bug, look for an element that is not present
+    }    
+
 }
