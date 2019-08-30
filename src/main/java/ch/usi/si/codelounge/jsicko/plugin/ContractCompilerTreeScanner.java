@@ -22,6 +22,9 @@ package ch.usi.si.codelounge.jsicko.plugin;
 
 import ch.usi.si.codelounge.jsicko.Contract;
 import ch.usi.si.codelounge.jsicko.plugin.utils.JavacUtils;
+
+import com.google.common.collect.Lists; 
+
 import com.sun.source.tree.*;
 import com.sun.source.util.TreeScanner;
 import com.sun.tools.javac.api.BasicJavacTask;
@@ -366,14 +369,17 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
     }
 
     private void addConditions(JCMethodDecl methodDecl, JCBlock block, List<ConditionClause> conditions) {
-        conditions.stream().forEach((ConditionClause ensuresClause) -> {
-            ensuresClause.resolveContractMethod(currentClassDecl.get());
-            if (!ensuresClause.isResolved()) {
+        // Since check statements can be inserted only in prepended mode,
+        // we visit the conditions in reverse order.
+        var reverseConditions = Lists.reverse(conditions);
+        reverseConditions.stream().forEach((ConditionClause clause) -> {
+            clause.resolveContractMethod(currentClassDecl.get());
+            if (!clause.isResolved()) {
                 javac.logError(this.currentCompilationUnitTree.get().getSourceFile(),
                         methodDecl.pos(),
-                        "On method " + methodDecl.sym + ", contract condition " + ensuresClause.getClauseRep() + " not resolved, method not found.");
+                        "On method " + methodDecl.sym + ", contract condition " + clause.getClauseRep() + " not resolved, method not found.");
             } else {
-                JCIf check = ensuresClause.createConditionCheck(methodDecl, ensuresClause);
+                JCIf check = clause.createConditionCheck(methodDecl, clause);
                 if (javac.isSuperOrThisConstructorCall(block.stats.head)) {
                     block.stats = block.stats.tail.prepend(check).prepend(block.stats.head);
                 } else {
