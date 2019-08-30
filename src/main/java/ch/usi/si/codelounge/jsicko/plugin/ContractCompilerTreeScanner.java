@@ -372,14 +372,14 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         // Since check statements can be inserted only in prepended mode,
         // we visit the conditions in reverse order.
         var reverseConditions = Lists.reverse(conditions);
-        reverseConditions.stream().forEach((ConditionClause ensuresClause) -> {
-            ensuresClause.resolveContractMethod(currentClassDecl.get());
-            if (!ensuresClause.isResolved()) {
+        reverseConditions.stream().forEach((ConditionClause clause) -> {
+            clause.resolveContractMethod(currentClassDecl.get());
+            if (!clause.isResolved()) {
                 javac.logError(this.currentCompilationUnitTree.get().getSourceFile(),
                         methodDecl.pos(),
-                        "On method " + methodDecl.sym + ", contract condition " + ensuresClause.getClauseRep() + " not resolved, method not found.");
+                        "On method " + methodDecl.sym + ", contract condition " + clause.getClauseRep() + " not resolved, method not found.");
             } else {
-                JCIf check = ensuresClause.createConditionCheck(methodDecl, ensuresClause);
+                JCIf check = clause.createConditionCheck(methodDecl, clause);
                 if (javac.isSuperOrThisConstructorCall(block.stats.head)) {
                     block.stats = block.stats.tail.prepend(check).prepend(block.stats.head);
                 } else {
