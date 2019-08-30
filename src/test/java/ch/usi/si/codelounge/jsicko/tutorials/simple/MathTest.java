@@ -44,4 +44,10 @@ public class MathTest {
         Executable textFixture = () -> Math.badsqrt(4.0);
         assertThrows(Contract.PostconditionViolation.class, textFixture);
     }
+
+    @Test void arrayMaxTest() throws Throwable {
+        Executable textFixture = () -> Math.max(null);
+        assertThrows(Contract.PreconditionViolation.class, textFixture);
+    }
+
 }

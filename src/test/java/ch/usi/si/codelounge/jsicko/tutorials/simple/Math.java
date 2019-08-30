@@ -47,4 +47,21 @@ public abstract class Math implements Contract {
         return java.lang.Math.abs((returns * returns) - arg) < 0.001;
     }
 
+    // Issue #10
+    @Requires({"nonnull", "nonempty"})
+    public static int max(int[] a) {
+        return 0;
+    }
+
+    @Pure
+    public static boolean nonnull(int[] a) { 
+        return a != null; 
+    }
+
+    @Pure
+    public static boolean nonempty(int[] a) { 
+        return a.length > 0; 
+    }
+
+
 }
