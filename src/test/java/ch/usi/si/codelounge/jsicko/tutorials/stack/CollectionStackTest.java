@@ -21,35 +21,35 @@
 package ch.usi.si.codelounge.jsicko.tutorials.stack;
 
 import ch.usi.si.codelounge.jsicko.Contract;
-import ch.usi.si.codelounge.jsicko.tutorials.stack.impl.ListStack;
+import ch.usi.si.codelounge.jsicko.tutorials.stack.impl.CollectionStack;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-public class ListStackTest {
+public class CollectionStackTest {
 
     @Test
     public void popOnEmptyStack() throws Throwable {
-        ListStack<String> foo = new ListStack<>();
+        CollectionStack<String> foo = new CollectionStack<>();
         assertThrows(Contract.PreconditionViolation.class,foo::pop);
     }
 
     @Test
     public void pushTest() throws Throwable {
-        ListStack<String> foo = new ListStack<>();
+        CollectionStack<String> foo = new CollectionStack<>();
         foo.push("elem");
     }
 
     @Test
     public void elementAtTest() throws Throwable {
-        ListStack<String> foo = new ListStack<>();
+        CollectionStack<String> foo = new CollectionStack<>();
         foo.push("elem");
         assertThrows(Contract.PreconditionViolation.class,() -> foo.elementAt(2));
     }
 
     @Test
     public void baseTest() throws Throwable {
-        ListStack<String> foo = new ListStack<>();
+        CollectionStack<String> foo = new CollectionStack<>();
         foo.push("elem");
         foo.top();
         foo.pop();
@@ -57,7 +57,7 @@ public class ListStackTest {
 
     @Test
     public void longTest() throws Throwable {
-        ListStack<String> foo = new ListStack<>();
+        CollectionStack<String> foo = new CollectionStack<>();
         foo.push("elem1");
         foo.push("elem2");
         foo.push("elem3");
@@ -74,7 +74,7 @@ public class ListStackTest {
 
     @Test
     public void clearTest() throws Throwable {
-        ListStack<String> foo = new ListStack<>();
+        CollectionStack<String> foo = new CollectionStack<>();
         for (int i = 0; i < 10; i++)
             foo.push(String.valueOf(i));
         foo.clear();

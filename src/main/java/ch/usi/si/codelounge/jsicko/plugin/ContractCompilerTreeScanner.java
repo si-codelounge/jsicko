@@ -173,7 +173,11 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
     }
 
     private boolean isAnyMethodMarkedAsOrMustBePure(List<Symbol> methodSymbols) {
-        return methodSymbols.stream().anyMatch((Symbol methodSymbol) -> isMarkedAsPure(methodSymbol) || isSpecialPureMethod(methodSymbol));
+        return methodSymbols.stream().anyMatch((Symbol methodSymbol) -> isMarkedAsPureOrIsSpecialPureMethod(methodSymbol));
+    }
+
+    private boolean isMarkedAsPureOrIsSpecialPureMethod(Symbol symbol) {
+        return isMarkedAsPure(symbol) || isSpecialPureMethod(symbol);
     }
 
     private boolean isMarkedAsPure(Symbol symbol) {
@@ -286,6 +290,10 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
             classDecl.sym.members().enter(overriddenOldMethodSymbol);
 
             this.overriddenOldMethod = Optional.of(overriddenOldMethod);
+
+            javac.logNote(this.currentCompilationUnitTree.get().getSourceFile(),
+            null, "Code of overridden old method " + this.overriddenOldMethod);
+    
         }
     }
 
@@ -468,7 +476,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
         return optionalLastMethod.isPresent() &&
                 optionalLastMethod.get() instanceof JCMethodDecl &&
-                optionalLastMethod.get().sym.getAnnotationsByType(Contract.Pure.class) != null;
+                isMarkedAsPureOrIsSpecialPureMethod(optionalLastMethod.get().sym);
     }
 
     private Optional<JCMethodDecl> getLastMethodInScope(Deque<Tree> relevantScope) {
