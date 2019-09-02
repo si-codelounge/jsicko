@@ -90,4 +90,9 @@ public abstract class Collections implements Contract {
         return isSorted(returns);
     }
 
+    // Issue #11: Contract clauses with names including digits don't compile
+    @Pure
+    private static <T extends Comparable<? super T>> boolean returns_collection_sorted_2(List<T> returns) {
+        return isSorted(returns);
+    }
 }
