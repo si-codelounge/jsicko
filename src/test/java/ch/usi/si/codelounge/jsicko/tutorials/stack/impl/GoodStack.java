@@ -83,4 +83,10 @@ public class GoodStack<T> implements Stack<T> {
             clear();
         }
     }
+
+    @Override
+    public int indexOf(T e) { 
+        return this.baseObject.indexOf(e); 
+    }
+
 }
