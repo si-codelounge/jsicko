@@ -143,12 +143,12 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 List<Contract.Requires> requires = overriddenMethods.stream().flatMap((Symbol overriddenMethod) -> Arrays.stream(overriddenMethod.getAnnotationsByType(Contract.Requires.class))).collect(Collectors.toList());
                 List<Contract.Ensures> ensures = overriddenMethods.stream().flatMap((Symbol overriddenMethod) -> Arrays.stream(overriddenMethod.getAnnotationsByType(Contract.Ensures.class))).collect(Collectors.toList());
 
-                var isMarkedPure = overriddenMethods.stream().flatMap((Symbol overriddenMethod) -> Arrays.stream(overriddenMethod.getAnnotationsByType(Contract.Pure.class))).collect(Collectors.toList()).size() > 0;
+                var isMarkedPure = isAnyMethodMarkedAsOrMustBePure(overriddenMethods);
 
                 tryBlock = boxMethodBody(methodTree);
                 optionalDeclareReturnValueCatcher(methodTree);
 
-                if (!methodSymbol.isConstructor() /* && !methodSymbol.isStatic() */ && !isMarkedPure) {
+                if (!methodSymbol.isConstructor() && !isMarkedPure) {
                     optionalSaveOldState(methodTree, this.currentClassDecl.get());
                     addLeaveScopeStatement(tryBlock.finalizer, methodDecl.sym.isStatic());
                 }
@@ -173,6 +173,27 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         var w = super.visitMethod(methodTree, relevantScope);
         relevantScope.pop();
         return w;
+    }
+
+    private boolean isAnyMethodMarkedAsOrMustBePure(List<Symbol> methodSymbols) {
+        return methodSymbols.stream().anyMatch((Symbol methodSymbol) -> isMarkedAsPureOrIsSpecialPureMethod(methodSymbol));
+    }
+
+    private boolean isMarkedAsPureOrIsSpecialPureMethod(Symbol symbol) {
+        return isMarkedAsPure(symbol) || isSpecialPureMethod(symbol);
+    }
+
+    private boolean isMarkedAsPure(Symbol symbol) {
+        return symbol.getAnnotationsByType(Contract.Pure.class).length > 0;
+    }
+
+    private boolean isSpecialPureMethod(Symbol symbol) {
+        /**
+         * Issue #13: java.util.Collection#iterator method is exploited by Kryo to serialize collections. 
+         * jSicko must thus consider it as as pure.
+         */
+        var isIteratorMethod = symbol.equals(this.javac.getJavaUtilCollectionIteratorMethodSymbol());
+        return isIteratorMethod;
     }
 
     private void addLeaveScopeStatement(JCBlock finalizer, boolean isStatic) {
@@ -269,6 +290,10 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
             classDecl.sym.members().enter(overriddenOldMethodSymbol);
 
             this.overriddenOldMethod = Optional.of(overriddenOldMethod);
+
+            javac.logNote(this.currentCompilationUnitTree.get().getSourceFile(),
+            null, "Code of overridden old method " + this.overriddenOldMethod);
+    
         }
     }
 
@@ -454,7 +479,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
         return optionalLastMethod.isPresent() &&
                 optionalLastMethod.get() instanceof JCMethodDecl &&
-                optionalLastMethod.get().sym.getAnnotationsByType(Contract.Pure.class) != null;
+                isMarkedAsPureOrIsSpecialPureMethod(optionalLastMethod.get().sym);
     }
 
     private Optional<JCMethodDecl> getLastMethodInScope(Deque<Tree> relevantScope) {
