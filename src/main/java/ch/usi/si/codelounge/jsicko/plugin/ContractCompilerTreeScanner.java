@@ -189,10 +189,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
          * Issue #13: java.util.Collection#iterator method is exploited by Kryo to serialize collections. 
          * jSicko must thus consider it as as pure.
          */
-        var isIteratorMethod = symbol.type.toString().equals("()java.util.Iterator<E>") && 
-            symbol.owner.toString().equals("java.util.Collection") &&
-            symbol.name.toString().equals("iterator");
-        
+        var isIteratorMethod = symbol.equals(this.javac.getJavaUtilCollectionIteratorMethodSymbol());
         return isIteratorMethod;
     }
 

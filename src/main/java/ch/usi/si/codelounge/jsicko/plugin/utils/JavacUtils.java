@@ -47,6 +47,8 @@ public final class JavacUtils {
     private final Log log;
     private final JCDiagnostic.Factory diagnosticFactory;
 
+    private final Symbol javaUtilCollectionIteratorMethodSymbol;
+
     public JavacUtils(BasicJavacTask task) {
         this.symbolsTable = Names.instance(task.getContext());
         this.types = Types.instance(task.getContext());
@@ -56,6 +58,7 @@ public final class JavacUtils {
         this.symtab = Symtab.instance(task.getContext());
         this.log = Log.instance(task.getContext());
         this.diagnosticFactory = JCDiagnostic.Factory.instance(task.getContext());
+        this.javaUtilCollectionIteratorMethodSymbol = retrieveMemberFromClassByName("java.util.Collection", "iterator");
     }
 
     public JCTree.JCExpression constructExpression(String... identifiers) {
@@ -184,6 +187,16 @@ public final class JavacUtils {
     public void logNote(JavaFileObject fileObject, JCDiagnostic.DiagnosticPosition pos, String message) {
         var sourcedDiagnosticNote = diagnosticFactory.create(null, EnumSet.of(JCDiagnostic.DiagnosticFlag.MANDATORY), new DiagnosticSource(fileObject,log), pos, new JCDiagnostic.Note("compiler", "proc.messager", "[jSicko] " + message));
         log.report(sourcedDiagnosticNote);
+    }
+
+    private Symbol retrieveMemberFromClassByName(String qualifiedClassName, String methodName) {
+        Symbol.ClassSymbol mapClassSymbol = symtab.getClassesForName(this.nameFromString(qualifiedClassName)).iterator().next();
+        var iteratorSymbol = mapClassSymbol.members().findFirst(symbolsTable.fromString(methodName));
+        return iteratorSymbol;
+    }
+
+    public Symbol getJavaUtilCollectionIteratorMethodSymbol() {
+        return this.javaUtilCollectionIteratorMethodSymbol;
     }
 
 }
