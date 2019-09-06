@@ -73,7 +73,10 @@ public interface Stack<T> extends Contract {
 
     @Ensures("when_found")
     int indexOf(T e); 
-       
+
+    @Ensures({"remove_postcondition_normal", "remove_postcondition_exceptional"})
+    T remove(int index); 
+   
     @Pure
     default boolean stack_is_empty() {
         return size() == 0;
@@ -142,6 +145,15 @@ public interface Stack<T> extends Contract {
     return implies(0 <= returns && returns < size(), () -> e.equals(elementAt(returns)));
     }
 
+    @Pure
+    default boolean remove_postcondition_normal(T returns, int index) {
+        return implies(pos_is_valid(index), () -> returns.equals(old(this).elementAt(index)) && size_decreases());
+    }
+
+    @Pure
+    default boolean remove_postcondition_exceptional(Throwable raises, int index) {
+        return implies(!pos_is_valid(index), () -> raises instanceof IndexOutOfBoundsException && this.equals(old(this)));
+    }
 
     /**
      * Returns a String representation of the Stack.

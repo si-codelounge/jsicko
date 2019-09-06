@@ -43,6 +43,28 @@ public final class Constants {
     public static final String RETURNS_CLAUSE_PARAMETER_IDENTIFIER_STRING = "returns";
 
     /**
+     * The synthetic local variable for the variable holding the raised exception value
+     * in an instrumented method.
+     *
+     * This variable is essential check exceptional post-conditions for query/
+     * hybrid command/query methods.
+     */
+    public static final String RAISES_SYNTHETIC_IDENTIFIER_STRING = "$raises";
+
+    /**
+     * The synthetic variable for the captured exception in the try-catch-finally
+     * block that implements the semantics of contract checking.
+     */
+    public static final String THROWN_SYNTHETIC_IDENTIFIER_STRING = "$thrown";
+
+
+    /**
+     * A special identifier to be used in clause methods to refer to the exception value raised/thrown
+     * by a method.
+     */
+    public static final String RAISES_CLAUSE_PARAMETER_IDENTIFIER_STRING = "raises";
+
+    /**
      * The name of the synthetic instance field used to store the old values table
      * for instance method calls.
      */
@@ -75,4 +97,11 @@ public final class Constants {
      * @see ch.usi.si.codelounge.jsicko.Contract#staticOld(Class, String, Object)
      */
     public static final String STATIC_OLD_METHOD_IDENTIFIER_STRING = "staticOld";
+
+    /**
+     * The name of the method called to clone objects with Kryo.
+     *
+     * @see ch.usi.si.codelounge.jsicko.plugin.utils.CloneUtils#kryoClone(Object) kryoClone
+     */
+    public static final String KRYO_CLONE_METHOD_QUALIFIED_IDENTIFIER = "ch.usi.si.codelounge.jsicko.plugin.utils.CloneUtils.kryoClone";
 }

@@ -81,6 +81,23 @@ public class GoodStackTest {
     }
 
     @Test
+    public void removeTest()  {
+        GoodStack<String> foo = new GoodStack<>();
+        for (int i = 0; i < 10; i++)
+            foo.push(String.valueOf(i));
+        foo.remove(3);
+    }
+
+    @Test
+    public void exceptionalRemoveTest() throws Throwable {
+        GoodStack<String> foo = new GoodStack<>();
+        for (int i = 0; i < 10; i++)
+            foo.push(String.valueOf(i));
+        assertThrows(Contract.PostconditionViolation.class,() -> foo.remove(-1));
+        assertThrows(Contract.PostconditionViolation.class,() -> foo.remove(11));
+    }
+
+    @Test
     public void testIndexOf() {
         GoodStack<Integer> s = new GoodStack<>();
         s.push(3);

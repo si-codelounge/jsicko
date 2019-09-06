@@ -86,6 +86,16 @@ public class CollectionStack<T> implements Stack<T>, Collection<T> {
         }
     }
 
+    @Override
+    public int indexOf(T e) {
+        return this.baseObject.indexOf(e); 
+    }
+
+    @Override 
+    public T remove(int index) {
+        return this.baseObject.remove(index);
+    }
+
     public Iterator<T> iterator() {
         return this.baseObject.iterator();
     }
