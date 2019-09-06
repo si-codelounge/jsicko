@@ -24,7 +24,6 @@ import ch.usi.si.codelounge.jsicko.Contract;
 import static ch.usi.si.codelounge.jsicko.ContractUtils.*;
 
 import java.util.Collection;
-import java.util.Map;
 
 public abstract class AbstractCollection<T> implements Contract {
 

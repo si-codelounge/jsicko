@@ -85,4 +85,9 @@ public class BadStack<T> implements Stack<T> {
         return this.baseObject.indexOf(e); 
     }
 
+    @Override 
+    public T remove(int index) {
+        return this.baseObject.remove(index);
+    }
+
 }

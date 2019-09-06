@@ -22,6 +22,8 @@ package ch.usi.si.codelounge.jsicko.tutorials.stack.impl;
 
 import ch.usi.si.codelounge.jsicko.tutorials.stack.Stack;
 
+import javax.print.PrintException;
+import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 
@@ -87,6 +89,11 @@ public class GoodStack<T> implements Stack<T> {
     @Override
     public int indexOf(T e) { 
         return this.baseObject.indexOf(e); 
+    }
+
+    @Override 
+    public T remove(int index) {
+        return this.baseObject.remove(index);
     }
 
 }

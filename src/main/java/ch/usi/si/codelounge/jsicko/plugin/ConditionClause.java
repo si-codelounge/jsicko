@@ -124,6 +124,8 @@ class ConditionClause {
             var clauseParamName = clauseParamSymbol.name.toString();
             if (clauseParamName.equals(Constants.RETURNS_CLAUSE_PARAMETER_IDENTIFIER_STRING)) {
                 clauseParamName = Constants.RETURNS_SYNTHETIC_IDENTIFIER_STRING;
+            } else if (clauseParamName.equals(Constants.RAISES_CLAUSE_PARAMETER_IDENTIFIER_STRING)) {
+                clauseParamName = Constants.RAISES_SYNTHETIC_IDENTIFIER_STRING;
             }
             return factory.Ident(javac.nameFromString(clauseParamName));
         }).collect(Collectors.toList());
