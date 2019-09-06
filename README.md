@@ -29,7 +29,7 @@ Then, in the `sqrt` method, you can simply bind the first spec clause method (`n
 
 ```java
     @Requires("non_negative_arg")
-    @Ensures({"approximate_returns"})
+    @Ensures("approximate_returns")
     public static double sqrt(double arg) {
         return java.lang.Math.sqrt(arg);
     }
@@ -61,13 +61,13 @@ Essentially, jSicko checks first the preconditions, then boxes the body of the m
 
 ## Features
 
-jSicko supports contract inheritance (meaning that overridden methods inherit contracts from superclasses and interfaces), old values (by using the static `old` method in the `Contract` class), and class invariants.
+jSicko supports contract inheritance (meaning that overridden methods inherit contracts from superclasses and interfaces), old values (by using the static `old` method in the `Contract` class), exceptional behaviors, and class invariants.
 
 For more examples and description of features, please check the official [jSicko Tutorials](https://github.com/si-codelounge/jsicko-tutorials) project.
 
 ## Current version and usage with maven
 
-The last version of jSicko is `1.0.0-M2`, and it is published in bintray.com. If you are using maven, you must add the bintray repository into your `pom.xml`:
+The last version of jSicko is `1.0.0-M3`, and it is published in bintray.com. If you are using maven, you must add the bintray repository into your `pom.xml`:
 
 ```xml
 <repository>
@@ -86,7 +86,7 @@ Thus, you can add the following dependency:
 <dependency>
     <groupId>ch.usi.si.codelounge</groupId>
     <artifactId>jSicko</artifactId>
-    <version>1.0.0-M2</version>
+    <version>1.0.0-M3</version>
 </dependency>
 ```      
 

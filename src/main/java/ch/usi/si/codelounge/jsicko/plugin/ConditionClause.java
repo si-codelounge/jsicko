@@ -39,7 +39,7 @@ import static com.sun.tools.javac.util.List.nil;
 
 class ConditionClause {
 
-    private static Pattern clauseFormatRegexp = Pattern.compile("(\\!?)([a-zA-Z_]+)");
+    private static Pattern clauseFormatRegexp = Pattern.compile("(\\!?)([A-Za-z][A-Za-z0-9_]*)");
 
     private final JavacUtils javac;
     private final String clauseRep;
@@ -51,7 +51,7 @@ class ConditionClause {
     private ConditionClause(JavacUtils javac,  String clauseRep, ContractConditionEnum conditionType) {
         var clauseRepFormatMatcher = clauseFormatRegexp.matcher(clauseRep);
         if (!clauseRepFormatMatcher.matches())
-            throw new IllegalArgumentException("Clause specification \"" + clauseRep + "\" is malformed");
+            throw new IllegalArgumentException("Clause specification name \"" + clauseRep + "\" is malformed. Please use a valid Java identifier / match regexp " + clauseFormatRegexp.toString());
         this.javac = javac;
         this.isNegated = !clauseRepFormatMatcher.group(1).isEmpty();
         this.methodName = javac.nameFromString(clauseRepFormatMatcher.group(2));
@@ -124,6 +124,8 @@ class ConditionClause {
             var clauseParamName = clauseParamSymbol.name.toString();
             if (clauseParamName.equals(Constants.RETURNS_CLAUSE_PARAMETER_IDENTIFIER_STRING)) {
                 clauseParamName = Constants.RETURNS_SYNTHETIC_IDENTIFIER_STRING;
+            } else if (clauseParamName.equals(Constants.RAISES_CLAUSE_PARAMETER_IDENTIFIER_STRING)) {
+                clauseParamName = Constants.RAISES_SYNTHETIC_IDENTIFIER_STRING;
             }
             return factory.Ident(javac.nameFromString(clauseParamName));
         }).collect(Collectors.toList());

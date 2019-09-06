@@ -1,4 +1,4 @@
-image: maven:3-jdk-11
+image: adoptopenjdk/maven-openjdk11
 
 variables:
   MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"

@@ -21,11 +21,8 @@
 package ch.usi.si.codelounge.jsicko.plugin.utils;
 
 import ch.usi.si.codelounge.jsicko.Contract;
-import com.sun.source.tree.MethodTree;
 import com.sun.tools.javac.api.BasicJavacTask;
 import com.sun.tools.javac.code.*;
-import com.sun.tools.javac.comp.Enter;
-import com.sun.tools.javac.comp.MemberEnter;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.*;
@@ -42,20 +39,25 @@ public final class JavacUtils {
     private final Symtab symtab;
     private final Names symbolsTable;
     private final TreeMaker factory;
-    private final Enter enter;
-    private final MemberEnter memberEnter;
     private final Log log;
     private final JCDiagnostic.Factory diagnosticFactory;
+    private final Type _throwableType;
+    private final Type _exceptionType;
+    private final Type _runtimeExceptionType;
+
+    private final Symbol javaUtilCollectionIteratorMethodSymbol;
 
     public JavacUtils(BasicJavacTask task) {
         this.symbolsTable = Names.instance(task.getContext());
         this.types = Types.instance(task.getContext());
         this.factory = TreeMaker.instance(task.getContext());
-        this.enter = Enter.instance(task.getContext());
-        this.memberEnter = MemberEnter.instance(task.getContext());
         this.symtab = Symtab.instance(task.getContext());
         this.log = Log.instance(task.getContext());
         this.diagnosticFactory = JCDiagnostic.Factory.instance(task.getContext());
+        this.javaUtilCollectionIteratorMethodSymbol = retrieveMemberFromClassByName("java.util.Collection", "iterator");
+        this._throwableType = retrieveClassSymbol("java.lang.Throwable").type;
+        this._exceptionType = retrieveClassSymbol("java.lang.Exception").type;
+        this._runtimeExceptionType = retrieveClassSymbol("java.lang.RuntimeException").type;
     }
 
     public JCTree.JCExpression constructExpression(String... identifiers) {
@@ -101,16 +103,14 @@ public final class JavacUtils {
         var thisTypeClosure = this.typeClosure(classDecl.sym.type);
 
         return thisTypeClosure.stream().flatMap((Type contractType) -> {
-            Stream<Symbol> contractOverriddenSymbols = contractType.tsym.getEnclosedElements().stream().filter((Symbol contractElement) -> {
-                return methodSymbol.getQualifiedName().equals(contractElement.name) &&
-                        methodSymbol.overrides(contractElement, contractType.tsym, types, true, true);
-            });
+            Stream<Symbol> contractOverriddenSymbols = contractType.tsym.getEnclosedElements().stream().filter((Symbol contractElement) -> methodSymbol.getQualifiedName().equals(contractElement.name) &&
+                    methodSymbol.overrides(contractElement, contractType.tsym, types, true, true));
             return contractOverriddenSymbols;
         }).collect(Collectors.toList());
     }
 
-    public boolean hasVoidReturnType(MethodTree methodTree) {
-        var methodReturnType = methodTree.getReturnType();
+    public boolean hasVoidReturnType(JCTree.JCMethodDecl methodDecl) {
+        var methodReturnType = methodDecl.getReturnType();
         return (methodReturnType instanceof JCTree.JCPrimitiveTypeTree) && ((JCTree.JCPrimitiveTypeTree) methodReturnType).typetag.equals(TypeTag.VOID);
     }
 
@@ -150,12 +150,6 @@ public final class JavacUtils {
 
     }
 
-    public Symbol oldMethodType() {
-        Symbol.ClassSymbol contractClassSymbol = symtab.getClassesForName(this.nameFromString("ch.usi.si.codelounge.jsicko.Contract")).iterator().next();
-        var member = contractClassSymbol.members().getSymbolsByName(symbolsTable.fromString("old"));
-        return member.iterator().next();
-    }
-
     public Type.TypeVar freshObjectTypeVar(Symbol owner) {
         var typeVar = new Type.TypeVar(symbolsTable.fromString("X"),owner,symtab.botType);
         typeVar.bound = symtab.objectType;
@@ -170,6 +164,19 @@ public final class JavacUtils {
     public Type stringType() {
         return symtab.stringType;
     }
+
+    public Type throwableType() {
+        return _throwableType;
+    }
+
+    public Type exceptionType() {
+        return _exceptionType;
+    }
+
+    public Type runtimeExceptionType() {
+        return _runtimeExceptionType;
+    }
+
 
     public void logError(JavaFileObject fileObject, JCDiagnostic.DiagnosticPosition pos, String message) {
         var diagnosticError = diagnosticFactory.error(JCDiagnostic.DiagnosticFlag.MANDATORY,
@@ -186,4 +193,39 @@ public final class JavacUtils {
         log.report(sourcedDiagnosticNote);
     }
 
+    private Symbol retrieveMemberFromClassByName(String qualifiedClassName, String methodName) {
+        Symbol.ClassSymbol mapClassSymbol = retrieveClassSymbol(qualifiedClassName);
+        var iteratorSymbol = mapClassSymbol.members().findFirst(symbolsTable.fromString(methodName));
+        return iteratorSymbol;
+    }
+
+    private Symbol.ClassSymbol retrieveClassSymbol(String qualifiedClassName) {
+        return symtab.getClassesForName(this.nameFromString(qualifiedClassName)).iterator().next();
+    }
+
+    public Symbol getJavaUtilCollectionIteratorMethodSymbol() {
+        return this.javaUtilCollectionIteratorMethodSymbol;
+    }
+
+    /**
+     * Given a list of exception types from a method throws declarations, derives the most
+     * general exception type thrown that can be safely rethrown according to Java's
+     * improved type checking analysis of rethrown exceptions.
+     *
+     * @see <a href="https://docs.oracle.com/javase/7/docs/technotes/guides/language/catch-multiple.html">Official Oracle documentation.</a>
+     *
+     * @param throwsList a list of expressions corresponding to a throws clause in a method declaration.
+     * @return one type among {@link java.lang.Throwable}, {@link java.lang.Exception}, and {@link java.lang.RuntimeException}.
+     */
+    public Type deriveMostGeneralExceptionTypeThrown(List<JCTree.JCExpression> throwsList) {
+        for(JCTree.JCExpression throwClause: throwsList) {
+            if (!this.types.isAssignable(throwClause.type,this._runtimeExceptionType) &&
+                    !this.types.isAssignable(throwClause.type,this._exceptionType))
+                return _throwableType;
+            else if (!this.types.isAssignable(throwClause.type,this._runtimeExceptionType)) {
+                return _exceptionType;
+            }
+        }
+        return _runtimeExceptionType;
+    }
 }

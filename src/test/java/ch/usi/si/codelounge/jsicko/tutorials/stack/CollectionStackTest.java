@@ -21,34 +21,35 @@
 package ch.usi.si.codelounge.jsicko.tutorials.stack;
 
 import ch.usi.si.codelounge.jsicko.Contract;
-import ch.usi.si.codelounge.jsicko.tutorials.stack.impl.BadStack;
+import ch.usi.si.codelounge.jsicko.tutorials.stack.impl.CollectionStack;
 import org.junit.jupiter.api.Test;
-
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/**
- * Simple tests for the bad Stack.
- */
-public class BadStackTest {
+public class CollectionStackTest {
 
     @Test
     public void popOnEmptyStack() throws Throwable {
-        BadStack<String> foo = new BadStack<>();
+        CollectionStack<String> foo = new CollectionStack<>();
         assertThrows(Contract.PreconditionViolation.class,foo::pop);
     }
 
     @Test
     public void pushTest() throws Throwable {
-        BadStack<String> foo = new BadStack<String>();
+        CollectionStack<String> foo = new CollectionStack<>();
         foo.push("elem");
     }
 
     @Test
+    public void elementAtTest() throws Throwable {
+        CollectionStack<String> foo = new CollectionStack<>();
+        foo.push("elem");
+        assertThrows(Contract.PreconditionViolation.class,() -> foo.elementAt(2));
+    }
+
+    @Test
     public void baseTest() throws Throwable {
-        BadStack<String> foo = new BadStack<>();
+        CollectionStack<String> foo = new CollectionStack<>();
         foo.push("elem");
         foo.top();
         foo.pop();
@@ -56,17 +57,27 @@ public class BadStackTest {
 
     @Test
     public void longTest() throws Throwable {
-        BadStack<String> foo = new BadStack<>();
+        CollectionStack<String> foo = new CollectionStack<>();
         foo.push("elem1");
-        assertThrows(Contract.PostconditionViolation.class, () -> foo.push("elem2"));
+        foo.push("elem2");
+        foo.push("elem3");
+        foo.top();
+        foo.pop();
+        foo.top();
+        foo.pop();
+        foo.push("elem4");
+        foo.top();
+        foo.pop();
+        foo.top();
+        foo.pop();
     }
 
     @Test
     public void clearTest() throws Throwable {
-        var baseCollection = IntStream.range(0,10).boxed().collect(Collectors.toList());
-        BadStack<Integer> foo = new BadStack<>(baseCollection);
+        CollectionStack<String> foo = new CollectionStack<>();
+        for (int i = 0; i < 10; i++)
+            foo.push(String.valueOf(i));
         foo.clear();
     }
 
-    
 }

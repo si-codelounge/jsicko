@@ -22,28 +22,28 @@ package ch.usi.si.codelounge.jsicko.tutorials.stack.impl;
 
 import ch.usi.si.codelounge.jsicko.tutorials.stack.Stack;
 
-import javax.print.PrintException;
-import java.io.IOException;
-import java.util.Collection;
 import java.util.List;
+import java.util.Collection;
+import java.util.Iterator;
 
 /**
- * A correct implementation of a Stack, backed by the JDK standard implementation.
+ * A correct implementation of a Stack, backed by the JDK standard implementation,
+ * and partially implementing the Collection interface.
  * @param <T> the type of the elements in the Stack.
  */
-public class GoodStack<T> implements Stack<T> {
+public class CollectionStack<T> implements Stack<T>, Collection<T> {
     private java.util.Stack<T> baseObject = new java.util.Stack<T>();
 
     @Requires("elems_not_null")
     @Ensures("collection_initializer")
-    public GoodStack(Collection<T> elems) {
-        super();
+    public CollectionStack(Collection<T> elems) {
+        //super();
         this.baseObject = new java.util.Stack<T>();
         this.baseObject.addAll(elems);
     }
 
     @Ensures("stack_is_empty")
-    public GoodStack() {
+    public CollectionStack() {
         this(List.of());
     }
 
@@ -87,13 +87,56 @@ public class GoodStack<T> implements Stack<T> {
     }
 
     @Override
-    public int indexOf(T e) { 
+    public int indexOf(T e) {
         return this.baseObject.indexOf(e); 
     }
 
     @Override 
     public T remove(int index) {
         return this.baseObject.remove(index);
+    }
+
+    public Iterator<T> iterator() {
+        return this.baseObject.iterator();
+    }
+
+    public boolean add(T e) {
+       return this.baseObject.add(e);
+    }
+    public boolean remove(Object o) {
+        throw new UnsupportedOperationException();
+    }
+
+    public boolean contains(Object o) {
+        return this.baseObject.contains(o);
+    }
+
+    public boolean isEmpty() { 
+        return this.size() == 0;
+    }
+
+    public boolean addAll(Collection<? extends T> coll) {
+        throw new UnsupportedOperationException();
+    }
+
+    public boolean removeAll(Collection<?> coll) {
+        throw new UnsupportedOperationException();
+    }
+
+    public boolean retainAll(Collection<?> coll) {
+        throw new UnsupportedOperationException();
+    }
+
+    public Object[] toArray() {
+        throw new UnsupportedOperationException();
+    }
+
+    public <E> E[] toArray(E[] a) {
+        throw new UnsupportedOperationException();
+    }
+
+    public boolean containsAll(Collection<?> coll) {
+        throw new UnsupportedOperationException();
     }
 
 }
