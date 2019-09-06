@@ -24,9 +24,9 @@ test:
   - mvn test
 
 github_mirroring:
+  image: ruby:2.6 
   stage: mirroring
   script:
     - git push -f https://$GITHUB_USERNAME:$GITHUB_TOKEN@github.com/si-codelounge/jsicko.git HEAD:master
   only:
     - master
-    
