@@ -52,13 +52,13 @@ public abstract class Math implements Contract {
 
     // Issue #10: Contract clause checking order reverses declaration order
     @Pure
-    public static boolean nonnull(int[] a) { 
-        return a != null; 
+    public static boolean nonnull(int[] a) {
+        return a != null;
     }
 
     @Pure
-    public static boolean nonempty(int[] a) { 
-        return a.length > 0; 
+    public static boolean nonempty(int[] a) {
+        return a.length > 0;
     }
 
     @Pure
