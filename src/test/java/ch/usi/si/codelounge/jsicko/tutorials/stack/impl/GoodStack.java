@@ -87,11 +87,11 @@ public class GoodStack<T> implements Stack<T> {
     }
 
     @Override
-    public int indexOf(T e) { 
-        return this.baseObject.indexOf(e); 
+    public int indexOf(T e) {
+        return this.baseObject.indexOf(e);
     }
 
-    @Override 
+    @Override
     public T remove(int index) {
         return this.baseObject.remove(index);
     }
