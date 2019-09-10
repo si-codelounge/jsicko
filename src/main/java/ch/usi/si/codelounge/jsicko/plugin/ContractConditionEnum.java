@@ -22,12 +22,18 @@ package ch.usi.si.codelounge.jsicko.plugin;
 
 import ch.usi.si.codelounge.jsicko.Contract;
 
+import java.util.function.Function;
+
 public enum ContractConditionEnum {
 
     PRECONDITION {
 
         public String toString() {
             return "Precondition";
+        }
+
+        public Function<String, Contract.ContractConditionViolation> violationConstructor() {
+            return Contract.PreconditionViolation::new;
         }
 
         public Class<Contract.PreconditionViolation> getAssertionErrorSpecificClass() {
@@ -44,6 +50,10 @@ public enum ContractConditionEnum {
             return Contract.PostconditionViolation.class;
         }
 
+        public Function<String, Contract.ContractConditionViolation> violationConstructor() {
+            return Contract.PostconditionViolation::new;
+        }
+
     }, INVARIANT {
 
         public String toString() {
@@ -53,8 +63,13 @@ public enum ContractConditionEnum {
         public Class<Contract.InvariantViolation> getAssertionErrorSpecificClass() {
             return Contract.InvariantViolation.class;
         }
+
+        public Function<String, Contract.ContractConditionViolation> violationConstructor() {
+            return Contract.InvariantViolation::new;
+        }
     };
 
     public abstract Class<? extends AssertionError> getAssertionErrorSpecificClass();
+    public abstract Function<String, Contract.ContractConditionViolation> violationConstructor();
 
 }

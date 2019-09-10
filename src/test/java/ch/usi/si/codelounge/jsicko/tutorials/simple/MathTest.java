@@ -31,8 +31,8 @@ public class MathTest {
 
     @Test
     public void sqrtWithNegativeArgument() throws Throwable {
-        Executable textFixture = () -> Math.sqrt(-1.0);
-        assertThrows(Contract.PreconditionViolation.class, textFixture);
+        Executable testFixture = () -> Math.sqrt(-1.0);
+        assertThrows(Contract.PreconditionViolation.class, testFixture);
     }
 
     @Test
@@ -42,8 +42,8 @@ public class MathTest {
 
     @Test
     public void badSqrtReturnsViolation() throws Throwable {
-        Executable textFixture = () -> Math.badsqrt(4.0);
-        assertThrows(Contract.PostconditionViolation.class, textFixture);
+        Executable testFixture = () -> Math.badsqrt(4.0);
+        assertThrows(Contract.PostconditionViolation.class, testFixture);
     }
 
     @Test void arrayMaxTestNullViolatesPrecondition() throws Throwable {
@@ -52,8 +52,8 @@ public class MathTest {
     }
 
     @Test void arrayMaxTestEmptyViolatesPrecondition() throws Throwable {
-        Executable textFixture = () -> Math.max(new int[0]);
-        assertThrows(Contract.PreconditionViolation.class, textFixture);
+        Executable testFixture = () -> Math.max(new int[0]);
+        assertThrows(Contract.PreconditionViolation.class, testFixture);
     }
 
     @Test void arrayMaxTestOneElement() {

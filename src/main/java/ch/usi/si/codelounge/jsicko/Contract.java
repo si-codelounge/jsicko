@@ -22,6 +22,7 @@ package ch.usi.si.codelounge.jsicko;
 
 import ch.usi.si.codelounge.jsicko.plugin.Constants;
 import ch.usi.si.codelounge.jsicko.plugin.OldValuesTable;
+import ch.usi.si.codelounge.jsicko.plugin.utils.ConditionChecker;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
@@ -31,6 +32,7 @@ public interface Contract {
     default OldValuesTable emptyOldValuesTable() {
         return new OldValuesTable();
     }
+    default ConditionChecker emptyPreconditionChecker() { return ConditionChecker.newPreconditionChecker(); }
 
     default <X> X instanceOld(String rep, X object) {
         throw new RuntimeException("Illegal call of instanceOld(rep,object) method outside a compiled contract");

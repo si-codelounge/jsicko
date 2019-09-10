@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Andrea Mocci and CodeLounge https://codelounge.si.usi.ch
+ * Copyright (C) 2019 Andrea Mocci and CodeLounge https://codelounge.si.usi.ch
  *
  * This file is part of jSicko - Java SImple Contract checKer.
  *
@@ -21,19 +21,21 @@
 package ch.usi.si.codelounge.jsicko.tutorials.inheritance;
 
 import ch.usi.si.codelounge.jsicko.Contract;
+
 import static ch.usi.si.codelounge.jsicko.Contract.old;
+import static ch.usi.si.codelounge.jsicko.ContractUtils.implies;
 
-public class List<T> extends AbstractList<T> implements Contract {
+public class Set<T> extends AbstractCollection<T> implements Contract {
 
-    private final java.util.List<T> baseCollection;
+    private final java.util.Set<T> baseCollection;
 
-    public List() {
-        this.baseCollection = new java.util.ArrayList<T>();
+    public Set() {
+        this.baseCollection = new java.util.TreeSet<T>();
     }
 
     @Override
     boolean supports_null_elements() {
-        return true;
+        return false;
     }
 
     @Override
@@ -52,15 +54,14 @@ public class List<T> extends AbstractList<T> implements Contract {
     }
 
     @Pure
-    public T get(int index) { return this.baseCollection.get(index); }
-
-    @Pure
-    public boolean element_at_old_size_position(T element) {
-        return this.get(old(this).size()) == element;
+    protected boolean size_increases_iff_not_contained(T element) {
+        return implies(!old(this).contains(element),
+                () -> this.size() == old(this).size() + 1,
+                () -> this.size() == old(this).size());
     }
 
     @Override
-    @Ensures("element_at_old_size_position")
+    @Ensures("size_increases_iff_not_contained")
     public void add(T element) {
         this.baseCollection.add(element);
     }
@@ -70,15 +71,9 @@ public class List<T> extends AbstractList<T> implements Contract {
         return this.baseCollection.remove(element);
     }
 
-    @Pure
-    boolean less_size_than_other(AbstractCollection<T> other) {
-        return this.size() < other.size();
-    }
-
     @Override
-    @Requires({"other_non_null", "other_non_empty", "less_size_than_other", "!isEmpty"})
-    public List<T> copyFrom(AbstractCollection<T> other) {
-        return new List<T>();
+    public Set<T> copyFrom(AbstractCollection<T> other) {
+        return new Set<T>();
     }
 
 

@@ -32,7 +32,7 @@ import java.util.stream.IntStream;
  * @param <T> the type for the stack elements.
  */
 public interface Stack<T> extends Contract {
-    
+
     @Invariant
     @Pure
     default boolean sizeNonNegative() {
@@ -72,11 +72,11 @@ public interface Stack<T> extends Contract {
     void clear();
 
     @Ensures("when_found")
-    int indexOf(T e); 
+    int indexOf(T e);
 
     @Ensures({"remove_postcondition_normal", "remove_postcondition_exceptional"})
-    T remove(int index); 
-   
+    T remove(int index);
+
     @Pure
     default boolean stack_is_empty() {
         return size() == 0;

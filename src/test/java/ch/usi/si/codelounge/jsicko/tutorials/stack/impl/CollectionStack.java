@@ -88,10 +88,10 @@ public class CollectionStack<T> implements Stack<T>, Collection<T> {
 
     @Override
     public int indexOf(T e) {
-        return this.baseObject.indexOf(e); 
+        return this.baseObject.indexOf(e);
     }
 
-    @Override 
+    @Override
     public T remove(int index) {
         return this.baseObject.remove(index);
     }
@@ -111,7 +111,7 @@ public class CollectionStack<T> implements Stack<T>, Collection<T> {
         return this.baseObject.contains(o);
     }
 
-    public boolean isEmpty() { 
+    public boolean isEmpty() {
         return this.size() == 0;
     }
 
