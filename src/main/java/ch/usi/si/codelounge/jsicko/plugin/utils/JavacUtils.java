@@ -184,8 +184,9 @@ public final class JavacUtils {
     }
 
     public Type.TypeVar freshObjectTypeVar(Symbol owner) {
-        var typeVar = new Type.TypeVar(symbolsTable.fromString("X"),owner,symtab.botType);
-        typeVar.bound = symtab.objectType;
+        var typeSymbol = new TypeVariableSymbol(0, symbolsTable.fromString("X"), null, owner);
+        var typeVar = new Type.TypeVar(typeSymbol,symtab.objectType,symtab.botType);
+        typeSymbol.type = typeVar;
         return typeVar;
     }
 
