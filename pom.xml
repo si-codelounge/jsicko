@@ -6,7 +6,7 @@
 
     <groupId>ch.usi.si.codelounge</groupId>
     <artifactId>jSicko</artifactId>
-    <version>1.0.0-M3</version>
+    <version>1.0.0-M3-HOTFIX</version>
 
     <properties>
         <maven.version>3.3.9</maven.version>
