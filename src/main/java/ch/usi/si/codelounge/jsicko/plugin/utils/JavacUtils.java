@@ -135,9 +135,20 @@ public final class JavacUtils {
     }
 
     public JCLiteral zeroValue(Type t) {
-        return t.isPrimitive() ?
-                factory.Literal(t.getTag(),0)
-                : nullLiteral();
+        if (t.equals(symtab.intType) || t.equals(symtab.charType) || t.equals(symtab.byteType) || t.equals(symtab.longType)) {
+            return factory.Literal(t.getTag(), 0);
+        }
+        if (t.equals(symtab.booleanType)) {
+            return factory.Literal(t.getTag(), 0);
+        }
+        if (t.equals(symtab.doubleType)) {
+            return factory.Literal(t.getTag(), 0.0d);
+        }
+        if (t.equals(symtab.floatType)) {
+            return factory.Literal(t.getTag(), 0.0f);
+        }
+
+        return nullLiteral();
     }
 
     public JCLiteral nullLiteral() {
