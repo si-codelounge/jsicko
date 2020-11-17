@@ -76,6 +76,14 @@ public class OldValuesTable {
             return this.scopeTable.get(key);
         }
 
+        /**
+         * Checks if a key has been stored in the table.
+         *
+         * @param key a string key (e.g., the name of a variable).
+         * @return <code>true</code> iff the value has been stored in the table.
+         */
+        boolean containsKey(String key) { return this.scopeTable.containsKey(key); }
+
     }
 
     private Deque<MethodScope> table;
@@ -121,5 +129,13 @@ public class OldValuesTable {
     public void putValue(String key, Object value) {
         this.table.peek().put(key, value);
     }
+
+    /**
+     * Checks if a key has been stored in the table.
+     *
+     * @param key a string key (e.g., the name of a variable).
+     * @return <code>true</code> iff the value has been stored in the table.
+     */
+    public boolean containsKey(String key) { return this.table.size() != 0 && this.table.peek().containsKey(key); }
 
 }

@@ -22,17 +22,21 @@ package ch.usi.si.codelounge.jsicko.plugin.utils;
 
 import ch.usi.si.codelounge.jsicko.Contract;
 import ch.usi.si.codelounge.jsicko.plugin.OldValuesTable;
+import ch.usi.si.codelounge.jsicko.plugin.diagnostics.JSickoDiagnostic;
+import com.google.common.collect.Streams;
 import com.sun.tools.javac.api.BasicJavacTask;
 import com.sun.tools.javac.code.*;
 import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.comp.Attr;
+import  com.sun.tools.javac.comp.TransTypes;
 import com.sun.tools.javac.tree.JCTree.*;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.*;
 
 import javax.tools.JavaFileObject;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 public final class JavacUtils {
@@ -41,6 +45,9 @@ public final class JavacUtils {
     private final Symtab symtab;
     private final Names symbolsTable;
     private final TreeMaker factory;
+    private final TransTypes transTypes;
+    private final Attr attr;
+
     private final Log log;
     private final JCDiagnostic.Factory diagnosticFactory;
     private final Type _throwableType;
@@ -49,6 +56,9 @@ public final class JavacUtils {
 
     private final Symbol javaUtilCollectionIteratorMethodSymbol;
 
+    private final ModuleSymbol _unnamedModule;
+    private final ModuleSymbol _javaBaseModule;
+
     public JavacUtils(BasicJavacTask task) {
         this.symbolsTable = Names.instance(task.getContext());
         this.types = Types.instance(task.getContext());
@@ -56,32 +66,43 @@ public final class JavacUtils {
         this.symtab = Symtab.instance(task.getContext());
         this.log = Log.instance(task.getContext());
         this.diagnosticFactory = JCDiagnostic.Factory.instance(task.getContext());
-        this.javaUtilCollectionIteratorMethodSymbol = retrieveMemberFromClassByName(Collection.class.getCanonicalName(), "iterator");
-        this._throwableType = retrieveClassSymbol(Throwable.class.getCanonicalName()).type;
-        this._exceptionType = retrieveClassSymbol(Exception.class.getCanonicalName()).type;
-        this._runtimeExceptionType = retrieveClassSymbol(RuntimeException.class.getCanonicalName()).type;
-    }
 
-    public JCExpression Expression(String... identifiers) {
-        var nameList = Arrays.stream(identifiers).map((String string) -> symbolsTable.fromString(string));
+        this.transTypes = TransTypes.instance(task.getContext());
+        this.attr = Attr.instance(task.getContext());
 
-        var expr = nameList.reduce(null, (JCExpression firstElem, Name name) -> {
-            if (firstElem == null)
-                return factory.Ident(name);
-            else
-                return factory.Select(firstElem, name);
-        }, (JCExpression firstElem, JCExpression name) -> name);
+        var javaUtilCollectioniteratorMethodSymbol = retrieveMemberFromClassByName(symtab.java_base, Collection.class.getCanonicalName(), "iterator");
 
-        return expr;
+        this._unnamedModule = symtab.unnamedModule;
+        this._javaBaseModule = symtab.java_base;
+
+        if (!javaUtilCollectioniteratorMethodSymbol.isPresent()) {
+            throw new IllegalStateException("JSicko Fatal Error: missing java.util.Collection symbol.");
+        }
+
+        this.javaUtilCollectionIteratorMethodSymbol = javaUtilCollectioniteratorMethodSymbol.get();
+        this._throwableType = retrieveClassSymbol(symtab.java_base, Throwable.class.getCanonicalName()).get().type;
+        this._exceptionType = retrieveClassSymbol(symtab.java_base, Exception.class.getCanonicalName()).get().type;
+        this._runtimeExceptionType = retrieveClassSymbol(symtab.java_base, RuntimeException.class.getCanonicalName()).get().type;
+
     }
 
     public TreeMaker getFactory() {
         return this.factory;
     }
 
-    public JCExpression Expression(String qualifiedName) {
-        String[] splitQualifiedName = qualifiedName.split("\\.");
-        return Expression(splitQualifiedName);
+    public JCExpression Expression(ModuleSymbol moduleSymbol, String classQualifiedName) {
+        Type classType = this.typeErasure(this.retrieveType(moduleSymbol, classQualifiedName));
+        return factory.Type(classType);
+    }
+
+    public JCExpression Expression(ModuleSymbol moduleSymbol, String classQualifiedName, String methodName) {
+        Type classType = this.retrieveType(moduleSymbol, classQualifiedName);
+        Symbol method = this.retrieveMemberFromClassByName(moduleSymbol, classQualifiedName, methodName).get();
+        return factory.Select(factory.Type(classType), method);
+    }
+
+    public JCExpression Erroneous() {
+        return factory.Erroneous();
     }
 
     public List<Type> typeClosure(Type t) {
@@ -96,27 +117,46 @@ public final class JavacUtils {
         return this.symbolsTable.fromString(name);
     }
 
-    public JCStatement MethodCall(JCExpression baseExpression, Name methodName, List<JCExpression> args) {
-        return factory.Exec(MethodInvocation(baseExpression, methodName, args));
+    public ModuleSymbol unnamedModule() {
+        return this._unnamedModule;
     }
 
-    public JCStatement MethodCall(JCExpression baseExpression, Name methodName) {
-        return MethodCall(baseExpression, methodName, List.nil());
+    public ModuleSymbol javaBaseModule() {
+        return this._javaBaseModule;
     }
 
-    public JCMethodInvocation MethodInvocation(JCExpression baseExpression, Name methodName, List<JCExpression> args) {
-        var selector = factory.Select(baseExpression, methodName);
-        return factory.Apply(List.nil(), selector, args);
+    public JCStatement MethodCall(ModuleSymbol moduleSymbol, JCExpression baseExpression, Name methodName, List<JCExpression> args) {
+        return factory.Exec(MethodInvocation(moduleSymbol, baseExpression, methodName, args));
     }
 
-    public JCMethodInvocation MethodInvocation(JCExpression baseExpression, Name methodName) {
-        return MethodInvocation(baseExpression, methodName, List.nil());
+    public JCStatement MethodCall(ModuleSymbol moduleSymbol, JCExpression baseExpression, Name methodName) {
+        return MethodCall(moduleSymbol, baseExpression, methodName, List.nil());
     }
 
+    public JCMethodInvocation MethodInvocation(ModuleSymbol moduleSymbol, JCExpression baseExpression, Name methodName, List<JCExpression> args) {
+        MethodSymbol sym = (MethodSymbol) this.retrieveMemberFromClassByName(moduleSymbol,
+                baseExpression.type.tsym.getQualifiedName().toString(),
+                methodName.toString(),
+                args.map(a -> a.type)
+        ).get();
+
+        var selector = factory.Select(baseExpression, sym);
+        var apply = factory.Apply(List.nil(), selector, args);
+        if (sym.isVarArgs()) {
+            var paramType =  sym.params.head.type;
+            apply.varargsElement = ((Type.ArrayType) paramType).getComponentType();
+        }
+        return apply.setType(selector.type.getReturnType());
+    }
+
+    public JCMethodInvocation MethodInvocation(ModuleSymbol moduleSymbol, JCExpression baseExpression, Name methodName) {
+        return MethodInvocation(moduleSymbol, baseExpression, methodName, List.nil());
+    }
 
     public boolean isTypeAssignable(Type t, Type s) {
         return types.isAssignable(t, s);
     }
+
 
     public List<Symbol> findOverriddenMethods(JCClassDecl classDecl, JCMethodDecl methodDecl) {
         var methodSymbol = methodDecl.sym;
@@ -135,9 +175,20 @@ public final class JavacUtils {
     }
 
     public JCLiteral zeroValue(Type t) {
-        return t.isPrimitive() ?
-                factory.Literal(t.getTag(),0)
-                : nullLiteral();
+        if (t.equals(symtab.intType) || t.equals(symtab.charType) || t.equals(symtab.byteType) || t.equals(symtab.longType)) {
+            return factory.Literal(t.getTag(), 0);
+        }
+        if (t.equals(symtab.booleanType)) {
+            return factory.Literal(t.getTag(), 0);
+        }
+        if (t.equals(symtab.doubleType)) {
+            return factory.Literal(t.getTag(), 0.0d);
+        }
+        if (t.equals(symtab.floatType)) {
+            return factory.Literal(t.getTag(), 0.0f);
+        }
+
+        return nullLiteral();
     }
 
     public JCLiteral nullLiteral() {
@@ -184,14 +235,19 @@ public final class JavacUtils {
     }
 
     public Type.TypeVar freshObjectTypeVar(Symbol owner) {
-        var typeVar = new Type.TypeVar(symbolsTable.fromString("X"),owner,symtab.botType);
-        typeVar.bound = symtab.objectType;
+        var typeSymbol = new TypeVariableSymbol(0, symbolsTable.fromString("X"), null, owner);
+        var typeVar = new Type.TypeVar(typeSymbol,symtab.objectType,symtab.botType);
+        typeSymbol.type = typeVar;
         return typeVar;
     }
 
     public JCExpression oldValuesTableTypeExpression() {
-        var mapTypeIdent = this.Expression(OldValuesTable.class.getCanonicalName());
-        return mapTypeIdent;
+        var mapTypeIdent = this.retrieveType(symtab.noModule, OldValuesTable.class.getCanonicalName());
+        return factory.Type(mapTypeIdent);
+    }
+
+    public JCExpression Type(Type tpe) {
+        return factory.Type(tpe);
     }
 
     public Type stringType() {
@@ -210,29 +266,83 @@ public final class JavacUtils {
         return _runtimeExceptionType;
     }
 
-    public void logError(JavaFileObject fileObject, JCDiagnostic.DiagnosticPosition pos, String message) {
+    public void logError(JavaFileObject fileObject, JCDiagnostic.DiagnosticPosition pos, JSickoDiagnostic.JSickoError jsickoError) {
         var diagnosticError = diagnosticFactory.error(JCDiagnostic.DiagnosticFlag.MANDATORY,
-                new DiagnosticSource(fileObject,log), pos, new JCDiagnostic.Error("compiler", "proc.messager", message));
+                new DiagnosticSource(fileObject,log),
+                pos,
+                jsickoError.jcError());
         log.report(diagnosticError);
     }
 
-    public void logWarning(JCDiagnostic.DiagnosticPosition pos, String message) {
-        log.mandatoryWarning(pos, new JCDiagnostic.Warning("compiler", "proc.messager", message));
+    public void logWarning(JCDiagnostic.DiagnosticPosition pos, JSickoDiagnostic.JSickoWarning warning) {
+        log.mandatoryWarning(pos, warning.jcWarning());
     }
 
-    public void logNote(JavaFileObject fileObject, JCDiagnostic.DiagnosticPosition pos, String message) {
-        var sourcedDiagnosticNote = diagnosticFactory.create(null, EnumSet.of(JCDiagnostic.DiagnosticFlag.MANDATORY), new DiagnosticSource(fileObject,log), pos, new JCDiagnostic.Note("compiler", "proc.messager", "[jSicko] " + message));
+    public void logNote(JavaFileObject fileObject, JCDiagnostic.DiagnosticPosition pos, JSickoDiagnostic.JSickoNote note) {
+        var sourcedDiagnosticNote = diagnosticFactory.create(null, EnumSet.of(JCDiagnostic.DiagnosticFlag.MANDATORY),
+                new DiagnosticSource(fileObject,log),
+                pos,
+                note.jcNote());
         log.report(sourcedDiagnosticNote);
     }
 
-    private Symbol retrieveMemberFromClassByName(String qualifiedClassName, String methodName) {
-        ClassSymbol mapClassSymbol = retrieveClassSymbol(qualifiedClassName);
-        return mapClassSymbol.members().findFirst(symbolsTable.fromString(methodName));
+    public Optional<Symbol> retrieveMemberFromClassByName(ModuleSymbol moduleSymbol, String qualifiedClassName, String methodName) {
+        Optional<ClassSymbol> mapClassSymbol = retrieveClassSymbol(moduleSymbol, qualifiedClassName);
+        var local = mapClassSymbol.map(s -> s.members().findFirst(symbolsTable.fromString(methodName)));
+        if (!local.isPresent() && mapClassSymbol.isPresent() && mapClassSymbol.get().isInner()) {
+            var inner = mapClassSymbol.get().owner.members().findFirst(symbolsTable.fromString(methodName));
+            return Optional.of(inner);
+        } else
+        return local;
     }
 
-    private ClassSymbol retrieveClassSymbol(String qualifiedClassName) {
-        return symtab.getClassesForName(this.Name(qualifiedClassName)).iterator().next();
+    private Optional<Symbol> retrieveMemberFromClassByName(ModuleSymbol moduleSymbol, String qualifiedClassName, String methodName, List<Type> types) {
+        Optional<ClassSymbol> mapClassSymbol = retrieveClassSymbol(moduleSymbol, qualifiedClassName);
+
+        var local = mapClassSymbol.map(s -> s.members().findFirst(symbolsTable.fromString(methodName),
+            t -> {
+                if (!(t instanceof MethodSymbol))
+                    return false;
+
+                var ms = (MethodSymbol)t;
+
+                // TODO: REFINE
+                if (ms.isVarArgs())
+                    return true;
+
+                if (ms.params.length() != types.length())
+                    return false;
+
+                var msts = ms.params.map(x -> x.type).stream();
+                var pts = types.stream();
+
+                var matches = Streams.zip(msts,pts, (t1, t2) -> {
+                   return this.types.isAssignable(t2,t1);
+                });
+
+                return matches.allMatch(b -> b.booleanValue());
+            }
+        )).or(() -> mapClassSymbol.map(s -> s.members().findFirst(symbolsTable.fromString(methodName))));
+
+        if (!local.isPresent() && mapClassSymbol.isPresent() && mapClassSymbol.get().isInner()) {
+            var inner = mapClassSymbol.get().owner.members().findFirst(symbolsTable.fromString(methodName));
+            return Optional.of(inner);
+        } else
+            return local;
     }
+
+    private Optional<ClassSymbol> retrieveClassSymbol(ModuleSymbol moduleSymbol, String qualifiedClassName) {
+        var symbols = symtab.getClassesForName(this.Name(qualifiedClassName)).iterator();
+        if (symbols.hasNext()) {
+            var symbol = symbols.next();
+            return Optional.of(symbol);
+        } else {
+            var inBase = symtab.enterClass(moduleSymbol, symbolsTable.fromString(qualifiedClassName));
+            return Optional.of(inBase);
+        }
+    }
+
+
 
     public Symbol getJavaUtilCollectionIteratorMethodSymbol() {
         return this.javaUtilCollectionIteratorMethodSymbol;
@@ -249,14 +359,93 @@ public final class JavacUtils {
      * @return one type among {@link java.lang.Throwable}, {@link java.lang.Exception}, and {@link java.lang.RuntimeException}.
      */
     public Type deriveMostGeneralExceptionTypeThrown(List<JCExpression> throwsList) {
-        for(JCExpression throwClause: throwsList) {
-            if (!this.types.isAssignable(throwClause.type,this._runtimeExceptionType) &&
-                    !this.types.isAssignable(throwClause.type,this._exceptionType))
+        for (JCExpression throwClause : throwsList) {
+            if (!this.types.isAssignable(throwClause.type, this._runtimeExceptionType) &&
+                    !this.types.isAssignable(throwClause.type, this._exceptionType))
                 return _throwableType;
-            else if (!this.types.isAssignable(throwClause.type,this._runtimeExceptionType)) {
+            else if (!this.types.isAssignable(throwClause.type, this._runtimeExceptionType)) {
                 return _exceptionType;
             }
         }
         return _runtimeExceptionType;
+    }
+
+    public Type retrieveType(ModuleSymbol moduleSymbol, String canonicalName) {
+        return retrieveClassSymbol(moduleSymbol, canonicalName).get().type;
+    }
+
+    public Symbol retrieveConstructor(ModuleSymbol moduleSymbol, String canonicalName) {
+        return retrieveClassSymbol(moduleSymbol, canonicalName).get().members().findFirst(symbolsTable.fromString("<init>"));
+    }
+
+    public Symbol retrieveConstructor(ModuleSymbol moduleSymbol, String canonicalName, Type... argTypes) {
+        return retrieveClassSymbol(moduleSymbol, canonicalName).get().members().findFirst(symbolsTable.fromString("<init>"),
+                f -> {
+                    if (!(f instanceof MethodSymbol))
+                        return false;
+                    var symbolParams = ((MethodSymbol) f).params();
+                    if (argTypes.length != symbolParams.length())
+                        return false;
+                    for (int i = 0; i < symbolParams.length(); i++) {
+                        var symbolParam = symbolParams.get(i);
+                        var paramToCheck = argTypes[i];
+                        if (!symbolParam.type.asElement().equals(paramToCheck.asElement())) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+    }
+
+    public Symbol retrieveEmptyConstructor(ModuleSymbol moduleSymbol, String canonicalName) {
+        return retrieveClassSymbol(moduleSymbol, canonicalName).get().members().findFirst(symbolsTable.fromString("<init>"),
+                f -> f instanceof MethodSymbol && ((MethodSymbol)f).params().length() == 0);
+    }
+
+
+    public void setOperator(JCUnary unaryOp) {
+        unaryOp.operator = new OperatorSymbol.OperatorSymbol(this.Name("!"), symtab.booleanType, 257, symtab.noSymbol);
+        unaryOp.type = booleanType();
+    }
+
+    public Type booleanType() {
+        return symtab.booleanType;
+    }
+
+    public Type voidType() {
+        return symtab.voidType;
+    }
+
+    public Type botType() {
+        return symtab.botType;
+    }
+
+    public void setOperator(JCBinary binary) {
+        Type.MethodType opType = new Type.MethodType(
+                List.of(stringType(), stringType()), stringType(), List.nil(), symtab.methodClass);
+        binary.operator = new OperatorSymbol.OperatorSymbol(this.Name("+"), opType, 256, symtab.noSymbol);
+        binary.type = stringType();
+    }
+
+    public void visitLambda(JCLambda lambda) {
+        var t = (VarSymbol) retrieveMemberFromClassByName(this.unnamedModule(), "ch.usi.si.codelounge.jsicko.plugin.utils.ConditionChecker","dummy").get();
+        lambda.type = t.type;
+        lambda.target = t.type;
+    }
+
+    public Type zeroType(Type t) {
+        return t.isPrimitive() ?
+                t
+                : botType();
+    }
+
+    public JCExpression falseLiteral() {
+        return zeroValue(booleanType());
+    }
+
+    public boolean isTypeAssignable(VarSymbol a, VarSymbol b) {
+        var aType = a.type.isPrimitive() ? a.type : a.erasure(this.types);
+        var bType = b.type.isPrimitive() ? b.type : b.erasure(this.types);
+        return this.types.isAssignable(aType, bType);
     }
 }

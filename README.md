@@ -67,7 +67,7 @@ For more examples and description of features, please check the official [jSicko
 
 ## Current version and usage with maven
 
-The last version of jSicko is `1.0.0-M3`, and it is published in bintray.com. If you are using maven, you must add the bintray repository into your `pom.xml`:
+The last version of jSicko is `1.0.0-M4`, and it is published in bintray.com. If you are using maven, you must add the bintray repository into your `pom.xml`:
 
 ```xml
 <repository>
@@ -86,7 +86,7 @@ Thus, you can add the following dependency:
 <dependency>
     <groupId>ch.usi.si.codelounge</groupId>
     <artifactId>jSicko</artifactId>
-    <version>1.0.0-M3</version>
+    <version>1.0.0-M4</version>
 </dependency>
 ```      
 
@@ -125,3 +125,183 @@ Finally, you need to enable the compiler plugin as an option of the maven compil
 ```                
 
 For instructions on how to run it with your IDE, please check the official [jSicko Tutorials](https://github.com/si-codelounge/jsicko-tutorials) project.
+
+## Common Errors and Pitfalls
+
+Here's a description of common errors and pitfalls that you may encounter while using jSicko. In general, 
+jSicko fails at the first major error encountered, and reports only the first one.
+
+### Compiler Notes
+
+jSicko generates a lot of compiler notes that can be useful to debug specifications and to report bugs. 
+The most important compiler note is the `Code of Instrumented Method`: If compilation is working as expected, this note will show
+the code of instrumented method containing the synthetic jSicko variables and logic.
+
+### Non-Public methods
+Remember: jSicko instruments *only public methods*. If the method is not public, jSicko will ignore it.
+Clauses may have any visibility, but remember that they must be accessible in the scope of the method where they are used.
+
+### Missing Clause
+
+This error is generated when you specify a clause that has not been declared, like in the snippet below:
+
+```java
+  @Pure boolean clause() { ... }
+
+  @Pure
+  @Ensures("clause_typo")
+  public void someMethod() { }
+```
+
+In this case, jSicko generates the following error:
+
+```
+MissingClauseMethod.java:33: error: [jsicko] Missing clause clause_typo in MissingClauseMethod#someMethod()
+  public void someMethod() {
+              ^]
+```
+
+### Invariant/Clause Is not boolean    
+
+This error is generated when the clause or invariant method does not return a boolean.
+
+For example:
+
+```java
+  @Invariant
+  @Pure
+  public String non_boolean_invariant() { ... }
+```
+
+In this case, jSicko generates the following error:
+
+```
+InvariantIsNotBoolean.java:33: error: [jsicko] Invariant non_boolean_invariant return type is not boolean, declared as String.
+        public String non_boolean_invariant() {
+                      ^
+```
+
+A similar error is generated for `@Requires`/`@Ensures` clauses.
+
+
+### Incompatible Clause
+
+This error is generated when an instance clause is used in a contract of a static method.
+
+For example:
+
+```java
+  @Pure
+  boolean instance_clause(int i) { ... }
+
+  @Ensures("instance_clause")
+  public static void staticMethod(int i) { ... }
+```
+
+jSicko generates the following error:
+
+```
+InstanceClauseOnStaticMethod.java:33: error: [jsicko] non-static clause Postcondition clause instance_clause in InstanceClauseOnStaticMethod#staticMethod(int) is not compatible with static method staticMethod.
+    public static void staticMethod(int i) {
+                       ^
+```
+
+Note that the opposite is generally allowed: A static clause can be used on an instance method, even if the clause method cannot reference `this`.
+
+### Returns on void Method
+
+This error is generated when a clause mentioning returns is used on a void method:
+
+```java
+  @Pure
+  boolean returns_something(Object returns) { ... }
+
+  @Ensures("returns_something")
+  public void voidMethod() { ... }
+```
+
+This is the corresponding error message:
+
+```
+ReturnsParamOnVoidMethod.java:33: error: [jsicko] Use of returns param on void method for clause returns_something(java.lang.Object returns) in ReturnsParamOnVoidMethod#voidMethod()
+    public void voidMethod() {
+                ^
+```
+
+### Returns/Raises on Precondition
+
+`returns` and `raises` variables are meant to be used in postconditions.
+
+If a clause mentioning such variables is used in a precondition, it generates an error:
+
+```java
+  @Pure
+  boolean raises_something(RuntimeException raises) { ... }
+
+  @Requires("raises_something")
+  public Object someMethod() { ... }
+```
+
+```
+RaisesParamOnPrecondition.java:33: error: [jsicko] Use of raises param on precondition for clause raises_something(java.lang.RuntimeException raises) in RaisesParamOnPrecondition#voidMethod()
+        public void voidMethod() {
+                      ^
+```
+       
+### Missing Param Name and Wrong Param Type
+
+These errors are generated when the clause mentions a parameter that does not exist in the method where it is used, or when the types are not compatible.
+
+For example, this snippet:
+```java
+  boolean clause(double i) {
+    return i > 0.0;
+  }
+
+  @Pure
+  @Ensures("clause")
+  public void method(double f) { ... }
+```
+
+generates the following error:
+
+```
+MissingClauseParameter.java:33: error: [jsicko] Missing param name i for clause clause(double i) in MissingClauseParameter#method(double f)
+    public void method(double f) {
+                ^
+```
+
+### Invariant with Parameters
+
+Invariant clauses must have no parameter. If by mistake you annotate a method with parameters as a class invariant, jSicko generates a compiler error. In the following case:
+
+```java 
+  @Invariant
+  @Pure
+  public boolean invariant_with_param(int value) {
+    return value < 3;
+  }
+```
+
+jSicko generates the following error:
+```
+InvariantWithParameter.java:29: error: [jsicko] Invariant invariant_with_param has parameters, should have none.
+    public boolean invariant_with_param(int value) {
+                   ^
+```
+
+### Static Invariants
+
+Invariants in jSicko cannot be static, as they represent invariants related to instance fields (also called representation invariants).
+
+### StackOverflow Errors
+
+This is probably the most complicated error that can appear when invoking  methods instrumented with jSicko.
+The issue is related to the mechanisms used to save the state of `old` variables, and in particular `old(this)`. jSicko uses a binary serialization framework, [kryo](https://github.com/EsotericSoftware/kryo), which is able to
+serialize arbitrary objects in Java.
+
+For some data types, like Java collections, it provides custom serialization and deserialization methods that invoke instance methods on the collection. A StackOverflow error may be thrown when some of the observer methods (*queries*) used in serialization are not declared as `@Pure`, and thus they are in turn instrumented by jSicko. This typically causes a non-trivial infinite recursion.
+
+In such cases, look at the stack trace and try to find such instance methods that are called recursively, and ensure that all observer methods are `@Pure`.
+
+

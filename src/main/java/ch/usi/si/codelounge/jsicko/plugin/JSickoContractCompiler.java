@@ -29,13 +29,13 @@ import com.sun.tools.javac.util.Context;
  */
 public class JSickoContractCompiler implements Plugin {
 
-    private final String NAME;
+    public static final String NAME = JSickoContractCompiler.class.getSimpleName();
 
     /**
      * Constructs the contract compiler.
      */
     public JSickoContractCompiler() {
-        this.NAME = JSickoContractCompiler.class.getSimpleName();
+
     }
 
     /**

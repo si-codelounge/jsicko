@@ -21,6 +21,7 @@
 package ch.usi.si.codelounge.jsicko.plugin;
 
 import ch.usi.si.codelounge.jsicko.Contract;
+import ch.usi.si.codelounge.jsicko.plugin.diagnostics.JSickoDiagnostic;
 import ch.usi.si.codelounge.jsicko.plugin.utils.JavacUtils;
 import com.sun.source.tree.Tree;
 import com.sun.tools.javac.api.BasicJavacTask;
@@ -31,7 +32,9 @@ import com.sun.tools.javac.util.JCDiagnostic;
 import com.sun.tools.javac.util.List;
 
 import javax.lang.model.element.Modifier;
+import java.util.LinkedList;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -43,20 +46,26 @@ import java.util.function.Function;
 class JSickoContractCompilerState {
 
     private final JavacUtils javac;
+    private final LinkedList<InternalState> stack;
+    Optional<JCCompilationUnit> _currentCompilationUnitTree = Optional.empty();
 
-    private boolean _currentClassHasContract = false;
 
-    private Optional<JCClassDecl> _currentClassDecl = Optional.empty();
-    private Optional<JCMethodDecl> _currentMethodDecl = Optional.empty();
-    private List<ConditionClause> _classInvariants = List.nil();
+    private class InternalState {
 
-    private Optional<JCVariableDecl> _currentMethodReturnVarDecl = Optional.empty();
-    private Optional<JCVariableDecl> _currentMethodRaisesVarDecl = Optional.empty();
+        boolean _currentClassHasContract = false;
 
-    private Optional<JCVariableDecl> _optionalOldValuesTableField = Optional.empty();
-    private Optional<JCVariableDecl> _optionalStaticOldValuesTableField = Optional.empty();
-    private Optional<JCMethodDecl> _overriddenOldMethod = Optional.empty();
-    private Optional<JCCompilationUnit> _currentCompilationUnitTree = Optional.empty();
+        Optional<JCClassDecl> _currentClassDecl = Optional.empty();
+        Optional<JCMethodDecl> _currentMethodDecl = Optional.empty();
+        List<ConditionClause> _classInvariants = List.nil();
+
+        Optional<JCVariableDecl> _currentMethodReturnVarDecl = Optional.empty();
+        Optional<JCVariableDecl> _currentMethodRaisesVarDecl = Optional.empty();
+
+        Optional<JCVariableDecl> _optionalOldValuesTableField = Optional.empty();
+        Optional<JCVariableDecl> _optionalStaticOldValuesTableField = Optional.empty();
+        Optional<JCMethodDecl> _overriddenOldMethod = Optional.empty();
+        Optional<Symbol.MethodSymbol> _currentOldMethodSymbol = Optional.empty();
+    }
 
     /**
      * Constructs a new state object.
@@ -64,6 +73,11 @@ class JSickoContractCompilerState {
      */
     JSickoContractCompilerState(BasicJavacTask task) {
         this.javac = new JavacUtils(task);
+        this.stack = new LinkedList<InternalState>();
+    }
+
+    private InternalState curr() {
+        return this.stack.peekLast();
     }
 
     /**
@@ -75,7 +89,12 @@ class JSickoContractCompilerState {
      * @return <code>true</code> iff the current class has a jSicko contract.
      */
     public boolean currentClassHasContract() {
-        return _currentClassHasContract;
+            return !this.stack.isEmpty() && curr()._currentClassHasContract;
+    }
+
+    public boolean currentClassCanHaveStaticDecls() {
+        return !this.stack.isEmpty() && curr()._currentClassDecl.isPresent() &&
+                !curr()._currentClassDecl.get().sym.isInner();
     }
 
     /**
@@ -91,6 +110,7 @@ class JSickoContractCompilerState {
      */
     void exitCompilationUnit() {
         this._currentCompilationUnitTree = Optional.empty();
+        this.stack.clear();
     }
 
     /**
@@ -109,32 +129,57 @@ class JSickoContractCompilerState {
         return this._currentCompilationUnitTree.isPresent();
     }
 
+    Optional<Symbol.MethodSymbol> currentOldMethodSymbol() {
+        return curr()._currentOldMethodSymbol;
+    }
+
+    public void setCurrentOldMethodSymbol(Symbol.MethodSymbol overriddenOldMethodSymbol) {
+        this.curr()._currentOldMethodSymbol = Optional.of(overriddenOldMethodSymbol);
+    }
+
     /**
      * Enters a new class declaration.
      * @param classDecl the class declaration to enter.
      */
     void enterClassDecl(JCClassDecl classDecl) {
-        this._currentClassDecl = Optional.of(classDecl);
-        this._classInvariants = ConditionClause.createInvariants(javac.findInvariants(classDecl), javac);
+        this.stack.add(new InternalState());
+        curr()._currentClassDecl = Optional.of(classDecl);
+        var classInvariants = javac.findInvariants(classDecl);
+        curr()._classInvariants = this.filterInvalidInvariants(ConditionClause.createInvariants(classInvariants,  javac, this));
         List<Type> contracts = retrieveContractTypes(classDecl.sym.type);
-        this.logNote(classDecl.pos(),
-                "Contract interfaces for class " + classDecl.getSimpleName() + ": " + contracts);
+        this.logNote(classDecl.pos(), JSickoDiagnostic.ContractInterfacesNote(classDecl.sym, contracts));
+        curr()._currentClassHasContract = !classDecl.sym.type.isInterface() && !contracts.isEmpty();
+    }
 
-        this._currentClassHasContract = !classDecl.sym.type.isInterface() && !contracts.isEmpty();
+    /**
+     * Filters out invalid invariant clauses (i.e., methods with parameters).
+     *
+     * It does not generate errors; errors are generated during visit of method declarations.
+     * At this point, we have access only to symbols, so there is no way to generate an error
+     * requiring a source code position.
+     *
+     * @param invariantClauses A set of (possibly invalid) invariant clauses.
+     * @return a filtered list of only valid invariant clauses.
+     */
+    private List<ConditionClause> filterInvalidInvariants(List<ConditionClause> invariantClauses) {
+        return invariantClauses.stream().filter((ConditionClause invariantClause) -> {
+            return invariantClause.getArity().map((Integer arity) -> arity.equals(Integer.valueOf(0))).orElse(false);
+        }).collect(List.collector());
     }
 
     /**
      * Exits the current class declaration.
      */
     void exitClassDecl() {
-        this._currentClassDecl = Optional.empty();
-        this._optionalOldValuesTableField = Optional.empty();
-        this._optionalStaticOldValuesTableField = Optional.empty();
-        this._currentMethodReturnVarDecl = Optional.empty();
-        this._currentMethodRaisesVarDecl = Optional.empty();
-        this._overriddenOldMethod = Optional.empty();
-        this._classInvariants = List.nil();
-        this._currentClassHasContract = false;
+        curr()._currentClassDecl = Optional.empty();
+        curr()._optionalOldValuesTableField = Optional.empty();
+        curr()._optionalStaticOldValuesTableField = Optional.empty();
+        curr()._currentMethodReturnVarDecl = Optional.empty();
+        curr()._currentMethodRaisesVarDecl = Optional.empty();
+        curr()._overriddenOldMethod = Optional.empty();
+        curr()._classInvariants = List.nil();
+        curr()._currentClassHasContract = false;
+        this.stack.removeLast();
     }
 
     /**
@@ -142,7 +187,7 @@ class JSickoContractCompilerState {
      * @return the currently visited class declaration, if present.
      */
     Optional<JCClassDecl> currentClassDecl() {
-        return this._currentClassDecl;
+        return curr()._currentClassDecl;
     }
 
     /**
@@ -152,7 +197,7 @@ class JSickoContractCompilerState {
      * @throws IllegalStateException iff the class declaration is absent.
      */
     public void ifClassDeclPresent(Consumer<? super JCClassDecl> consumer) {
-        this._currentClassDecl.ifPresentOrElse(consumer,() -> new IllegalStateException("No current class declaration in jSicko compiler state"));
+        curr()._currentClassDecl.ifPresentOrElse(consumer,() -> new IllegalStateException("No current class declaration in jSicko compiler state"));
     }
 
     /**
@@ -164,7 +209,7 @@ class JSickoContractCompilerState {
      * @throws IllegalStateException iff the class declaration is absent.
      */
     public <U> U mapAndGetOnClassDecl(Function<? super JCClassDecl, ? extends U> mapper) {
-        return this._currentClassDecl.map(mapper).orElseThrow(() -> new IllegalStateException("No current class declaration in jSicko compiler state"));
+        return curr()._currentClassDecl.map(mapper).orElseThrow(() -> new IllegalStateException("No current class declaration in jSicko compiler state"));
     }
 
     /**
@@ -173,7 +218,7 @@ class JSickoContractCompilerState {
      * @return <code>true</code> iff the passed method is the overridden old method.
      */
     boolean isOverriddenOldMethod(JCMethodDecl otherMethodDecl) {
-        return otherMethodDecl.equals(this._overriddenOldMethod.get());
+        return otherMethodDecl.equals(curr()._overriddenOldMethod.get());
     }
 
     /**
@@ -181,22 +226,21 @@ class JSickoContractCompilerState {
      * @param methodDecl a method declaration.
      */
     void enterMethodDecl(JCMethodDecl methodDecl) {
-        this._currentMethodDecl = Optional.of(methodDecl);
-        this._currentMethodReturnVarDecl = Optional.empty();
-        this._currentMethodRaisesVarDecl = Optional.empty();
+        curr()._currentMethodDecl = Optional.of(methodDecl);
+        curr()._currentMethodReturnVarDecl = Optional.empty();
+        curr()._currentMethodRaisesVarDecl = Optional.empty();
     }
 
     /**
      * Exits a method declaration.
      */
     void exitMethodDecl() {
-        if (this._currentClassHasContract || this._currentMethodRaisesVarDecl.isPresent()) {
-            this.logNote(this._currentMethodDecl.get().pos(),
-                    "Code of Instrumented " + this._currentMethodDecl.get().sym + " method: " + this._currentMethodDecl.get().toString());
+        if (curr()._currentClassHasContract || curr()._currentMethodRaisesVarDecl.isPresent()) {
+            this.logNote(curr()._currentMethodDecl.get().pos(), JSickoDiagnostic.InstrumentedMethodNote(curr()._currentMethodDecl.get()));
         }
-        this._currentMethodDecl = Optional.empty();
-        this._currentMethodReturnVarDecl = Optional.empty();
-        this._currentMethodRaisesVarDecl = Optional.empty();
+        curr()._currentMethodDecl = Optional.empty();
+        curr()._currentMethodReturnVarDecl = Optional.empty();
+        curr()._currentMethodRaisesVarDecl = Optional.empty();
     }
 
     /**
@@ -204,8 +248,8 @@ class JSickoContractCompilerState {
      * @return the list of methods that have been overridden by the current method declaration, starting from the one on top of the hierarchy.
      */
     List<Symbol> findOverriddenMethodsOfCurrentMethod() {
-        var overriddenMethods = javac.findOverriddenMethods(this._currentClassDecl.get(), this._currentMethodDecl.get()).reverse();
-        var currentMethodSymbol = this._currentMethodDecl.get().sym;
+        var overriddenMethods = javac.findOverriddenMethods(curr()._currentClassDecl.get(), curr()._currentMethodDecl.get()).reverse();
+        var currentMethodSymbol = curr()._currentMethodDecl.get().sym;
         if (!overriddenMethods.contains(currentMethodSymbol))
             overriddenMethods.append(currentMethodSymbol);
         return overriddenMethods;
@@ -233,7 +277,7 @@ class JSickoContractCompilerState {
      * @throws IllegalStateException iff the method declaration is absent.
      */
     public <U> U mapAndGetOnMethodDecl(Function<? super JCMethodDecl, ? extends U> mapper) {
-        return this._currentMethodDecl.map(mapper).orElseThrow(() -> new IllegalStateException("No current method declaration in jSicko compiler state"));
+        return curr()._currentMethodDecl.map(mapper).orElseThrow(() -> new IllegalStateException("No current method declaration in jSicko compiler state"));
     }
 
     /**
@@ -243,7 +287,7 @@ class JSickoContractCompilerState {
      * @throws IllegalStateException iff the method declaration is absent.
      */
     public void ifMethodDeclPresent(Consumer<? super JCMethodDecl> consumer) {
-        this._currentMethodDecl.ifPresentOrElse(consumer,() -> new IllegalStateException("No current method declaration in jSicko compiler state"));
+        curr()._currentMethodDecl.ifPresentOrElse(consumer,() -> new IllegalStateException("No current method declaration in jSicko compiler state"));
     }
 
     /**
@@ -251,7 +295,7 @@ class JSickoContractCompilerState {
      * @return the current method declaration, if present.
      */
     public Optional<JCVariableDecl> currentMethodReturnVarDecl() {
-        return this._currentMethodReturnVarDecl;
+        return curr()._currentMethodReturnVarDecl;
     }
 
     /**
@@ -259,7 +303,7 @@ class JSickoContractCompilerState {
      * @return the old values table field declaration, if present.
      */
     Optional<JCVariableDecl> optionalOldValuesTableField() {
-        return this._optionalOldValuesTableField;
+        return curr()._optionalOldValuesTableField;
     }
 
 
@@ -268,9 +312,9 @@ class JSickoContractCompilerState {
      * @return the requested old values table field declaration.
      */
     JCVariableDecl oldValuesTableFieldDeclByMethodType() {
-        return (this._currentMethodDecl.get().sym.isStatic() ?
-                this._optionalStaticOldValuesTableField.get() :
-                this._optionalOldValuesTableField.get());
+        return (curr()._currentMethodDecl.get().sym.isStatic() ?
+                curr()._optionalStaticOldValuesTableField.get() :
+                curr()._optionalOldValuesTableField.get());
     }
 
     /**
@@ -278,11 +322,12 @@ class JSickoContractCompilerState {
      * @param overriddenOldMethod the method that overrides the default old declaration.
      */
     void overrideOldMethod(JCMethodDecl overriddenOldMethod) {
-        var classDecl = this._currentClassDecl.get();
+        var classDecl = curr()._currentClassDecl.get();
+        var prevPos = classDecl.defs.head.pos();
         classDecl.defs = classDecl.defs.prepend(overriddenOldMethod);
         classDecl.sym.members().enter(overriddenOldMethod.sym);
-        this._overriddenOldMethod = Optional.of(overriddenOldMethod);
-        this.logNote(null, "Code of overridden old method " + overriddenOldMethod);
+        curr()._overriddenOldMethod = Optional.of(overriddenOldMethod);
+        this.logNote(prevPos, JSickoDiagnostic.OverriddenOldMethodNote(overriddenOldMethod));
     }
 
     /**
@@ -292,11 +337,11 @@ class JSickoContractCompilerState {
      */
     void appendOldValuesTableField(JCVariableDecl varDef, boolean isTheStaticOne) {
         if (isTheStaticOne)
-            this._optionalStaticOldValuesTableField = Optional.of(varDef);
+            curr()._optionalStaticOldValuesTableField = Optional.of(varDef);
         else
-            this._optionalOldValuesTableField = Optional.of(varDef);
-        this._currentClassDecl.get().defs = this._currentClassDecl.get().defs.prepend(varDef);
-        this._currentClassDecl.get().sym.members().enter(varDef.sym);
+            curr()._optionalOldValuesTableField = Optional.of(varDef);
+        curr()._currentClassDecl.get().defs = curr()._currentClassDecl.get().defs.prepend(varDef);
+        curr()._currentClassDecl.get().sym.members().enter(varDef.sym);
     }
 
     /**
@@ -304,7 +349,7 @@ class JSickoContractCompilerState {
      * @return the declaration of the raises variable.
      */
     Optional<JCVariableDecl> currentMethodRaisesVarDecl() {
-        return this._currentMethodRaisesVarDecl;
+        return curr()._currentMethodRaisesVarDecl;
     }
 
     /**
@@ -312,7 +357,7 @@ class JSickoContractCompilerState {
      * @param varDef the returns variable declaration.
      */
     void setCurrentMethodReturnVarDecl(JCVariableDecl varDef) {
-        this._currentMethodReturnVarDecl = Optional.of(varDef);
+        curr()._currentMethodReturnVarDecl = Optional.of(varDef);
     }
 
     /**
@@ -320,7 +365,7 @@ class JSickoContractCompilerState {
      * @param varDef the raises variable declaration.
      */
     void setCurrentMethodRaisesVarDecl(JCVariableDecl varDef) {
-        this._currentMethodRaisesVarDecl = Optional.of(varDef);
+        curr()._currentMethodRaisesVarDecl = Optional.of(varDef);
     }
 
     /**
@@ -328,29 +373,29 @@ class JSickoContractCompilerState {
      * @return the list of invariant clauses in the currently visited class.
      */
     List<ConditionClause> classInvariants() {
-        return this._classInvariants;
+        return curr()._classInvariants;
     }
 
     /**
      * Logs a compiler note in the source file of the currently visited compilation unit.
      * @param pos the position of the note.
-     * @param message the message to log.
+     * @param note the note to log.
      */
-    void logNote(JCDiagnostic.DiagnosticPosition pos, String message) {
+    void logNote(JCDiagnostic.DiagnosticPosition pos, JSickoDiagnostic.JSickoNote note) {
         javac.logNote(this._currentCompilationUnitTree.get().getSourceFile(),
                 pos,
-                message);
+                note);
     }
 
     /**
      * Logs a compiler error in the source file of the currently visited compilation unit
      * @param pos the position of the note.
-     * @param message the error message to log.
+     * @param error the error to log.
      */
-    void logError(JCDiagnostic.DiagnosticPosition pos, String message) {
+    void logError(JCDiagnostic.DiagnosticPosition pos, JSickoDiagnostic.JSickoError error) {
         javac.logError(this._currentCompilationUnitTree.get().getSourceFile(),
                 pos,
-                message);
+                error);
     }
 
     /**
@@ -359,7 +404,7 @@ class JSickoContractCompilerState {
      * @return <code>true</code> iff the passed tree is the currently visited method declaration.
      */
     public boolean isCurrentMethodDecl(Tree tree) {
-        return tree.equals(this._currentMethodDecl.get());
+        return tree.equals(curr()._currentMethodDecl.get());
     }
 
     /**

@@ -43,6 +43,9 @@ public interface Contract {
         try {
             var staticOldValuesTableField = clazz.getDeclaredField(Constants.STATIC_OLD_FIELD_IDENTIFIER_STRING);
             var staticOldValuesTable = (OldValuesTable) staticOldValuesTableField.get(null);
+            if (!staticOldValuesTable.containsKey(rep)) {
+                throw new RuntimeException("[jsicko] values table does not contain key " + rep + ": clause uses old(.) in a pure method");
+            }
             return (X) staticOldValuesTable.getValue(rep);
         } catch(NoSuchFieldException | IllegalAccessException e) {
             throw new RuntimeException("Illegal call of staticOld(" + clazz + ",rep,object) method outside a compiled contract", e);

@@ -1,3 +1,8 @@
 target
 .idea
 jSicko.iml
+.classpath
+.project
+.settings/
+.vscode/
+
