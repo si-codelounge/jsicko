@@ -21,6 +21,7 @@
 package ch.usi.si.codelounge.jsicko.plugin;
 
 import ch.usi.si.codelounge.jsicko.Contract;
+import ch.usi.si.codelounge.jsicko.plugin.diagnostics.JSickoDiagnostic;
 import ch.usi.si.codelounge.jsicko.plugin.utils.ConditionChecker;
 import ch.usi.si.codelounge.jsicko.plugin.utils.JavacUtils;
 
@@ -29,10 +30,14 @@ import com.sun.source.util.TreeScanner;
 import com.sun.tools.javac.api.BasicJavacTask;
 import com.sun.tools.javac.code.*;
 import com.sun.tools.javac.code.Symbol.*;
+import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.*;
 import com.sun.tools.javac.tree.TreeMaker;
+import com.sun.tools.javac.util.Assert;
+import com.sun.tools.javac.util.JCDiagnostic;
 import com.sun.tools.javac.util.List;
 
+import javax.lang.model.element.Modifier;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.Optional;
@@ -63,21 +68,23 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
     @Override
     public Void visitClass(ClassTree classTree, Deque<Tree> relevantScope) {
+        var classDecl = (JCClassDecl) classTree;
 
         this.state.currentCompilationUnitTree().ifPresent((CompilationUnitTree currentCompilationUnitTree) -> {
-            var classDecl = (JCClassDecl) classTree;
             this.state.enterClassDecl(classDecl);
             optionalDeclareOldVariableAndMethod();
         });
 
         var w = super.visitClass(classTree, relevantScope);
         this.state.exitClassDecl();
+        state.logNote(classDecl.pos(), JSickoDiagnostic.InstrumentedClassNote(classDecl));
         return w;
     }
 
     @Override
     public Void visitMethod(MethodTree methodTree, Deque<Tree> relevantScope) {
         var methodDecl = (JCMethodDecl) methodTree;
+        this.checkAnnotations(methodDecl);
 
         this.state.enterMethodDecl(methodDecl);
 
@@ -112,6 +119,29 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
     }
 
     /**
+     * Check annotations on method declaration for usage errors.
+     *
+     * For the moment, it checks that if the method has the Invariant annotation, it must have
+     * arity zero.
+     *
+     * @param methodDecl a method declaration.
+     */
+    private void checkAnnotations(JCMethodDecl methodDecl) {
+        var invariantAnnotation = methodDecl.sym.getAnnotation(Contract.Invariant.class);
+        if (invariantAnnotation != null) {
+            if (methodDecl.getParameters().length() > 0) {
+                this.state.logError(methodDecl.pos(), JSickoDiagnostic.InvariantHasNonZeroArity(methodDecl));
+            }
+            if (methodDecl.getModifiers().getFlags().contains(Modifier.STATIC)) {
+                this.state.logError(methodDecl.pos(), JSickoDiagnostic.InvariantIsStatic(methodDecl));
+            }
+            if (methodDecl.getReturnType().type != null && !methodDecl.getReturnType().type.equals(this.javac.booleanType())) {
+                this.state.logError(methodDecl.pos(), JSickoDiagnostic.InvariantIsNotBoolean(methodDecl));
+            }
+        }
+    }
+
+    /**
      * From a list of method symbols that represent the sequence of overridden methods, constructs a list of
      * condition clauses, each one representing a postcondition clause of a particular overridden method.
      *
@@ -123,10 +153,11 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
      * @return a list of condition clauses, representing the postconditions for a given method.
      */
     private List<ConditionClause> constructEnsureClauses(List<Symbol> overriddenMethods) {
-        return overriddenMethods.stream().flatMap((Symbol overriddenMethod) -> {
-            return Arrays.stream(overriddenMethod.getAnnotationsByType(Contract.Ensures.class))
-                    .flatMap((Contract.Ensures ensuresClauseGroup) -> ConditionClause.from(ensuresClauseGroup, overriddenMethod, javac).stream());
-        }).collect(List.collector());
+        return overriddenMethods.stream().flatMap((Symbol overriddenMethod) ->
+                Arrays.stream(overriddenMethod.getAnnotationsByType(Contract.Ensures.class))
+                .flatMap((Contract.Ensures ensuresClauseGroup) -> ConditionClause.from(ensuresClauseGroup, overriddenMethod, this.javac, this.state)
+                        .stream()))
+                .collect(List.collector());
     }
 
     /**
@@ -144,7 +175,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         return overriddenMethods.stream()
                 .flatMap((Symbol overriddenMethod) -> {
                     return Arrays.stream(overriddenMethod.getAnnotationsByType(Contract.Requires.class))
-                            .map((Contract.Requires requiresClauseGroup) -> ConditionClause.from(requiresClauseGroup, overriddenMethod, javac));
+                            .map((Contract.Requires requiresClauseGroup) -> ConditionClause.from(requiresClauseGroup, overriddenMethod, this.javac, this.state));
                 }).collect(List.collector());
     }
 
@@ -214,12 +245,10 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
      * Appends the enter scope statement for the old values table.
      */
     private void addEnterScopeStatement() {
-        this.state.ifMethodDeclPresent((JCMethodDecl methodDecl) -> {
-            this.state.optionalOldValuesTableField().ifPresent((JCVariableDecl oldValuesTableField) -> {
-                JCMethodInvocation enterScopeStatement = buildEnterScopeStatement(methodDecl.sym);
-                methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(factory.Exec(enterScopeStatement));
-            });
-        });
+        this.state.ifMethodDeclPresent((JCMethodDecl methodDecl) -> this.state.optionalOldValuesTableField().ifPresent((JCVariableDecl oldValuesTableField) -> {
+            JCMethodInvocation enterScopeStatement = buildEnterScopeStatement(methodDecl.sym);
+            methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(factory.Exec(enterScopeStatement));
+        }));
     }
 
     /**
@@ -235,24 +264,23 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
      * Optionally adds statements to save the old state of this/local variables in the old values table.
      */
     private void optionalSaveOldState() {
-        this.state.ifMethodDeclPresent((JCMethodDecl methodDecl) -> {
-            this.state.optionalOldValuesTableField().ifPresent((JCVariableDecl oldValuesTableField) -> {
+        this.state.ifMethodDeclPresent((JCMethodDecl methodDecl) ->
+                this.state.optionalOldValuesTableField().ifPresent((JCVariableDecl oldValuesTableField) -> {
 
-                var oldValuesTableFieldDecl = this.state.oldValuesTableFieldDeclByMethodType();
+            var oldValuesTableFieldDecl = this.state.oldValuesTableFieldDeclByMethodType();
 
-                if (!methodDecl.sym.isStatic()) {
-                    JCStatement saveThisOldValueStatement = buildStatementToSaveThisOldValue(oldValuesTableFieldDecl);
-                    methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(saveThisOldValueStatement);
-                }
+            if (!methodDecl.sym.isStatic()) {
+                JCStatement saveThisOldValueStatement = buildStatementToSaveThisOldValue(oldValuesTableFieldDecl);
+                methodDecl.getBody().stats = methodDecl.getBody().stats.prepend(saveThisOldValueStatement);
+            }
 
-                var saveLocalVariableOldValueStatements = methodDecl.getParameters().stream().map((JCVariableDecl paramDecl) ->
-                        buildStatementToSaveLocalVariableOldValue(oldValuesTableFieldDecl, paramDecl))
-                        .collect(List.collector());
+            var saveLocalVariableOldValueStatements = methodDecl.getParameters().stream().map((JCVariableDecl paramDecl) ->
+                    buildStatementToSaveLocalVariableOldValue(oldValuesTableFieldDecl, paramDecl))
+                    .collect(List.collector());
 
-                methodDecl.getBody().stats = methodDecl.getBody().stats.prependList(saveLocalVariableOldValueStatements);
+            methodDecl.getBody().stats = methodDecl.getBody().stats.prependList(saveLocalVariableOldValueStatements);
 
-            });
-        });
+        }));
     }
 
     /**
@@ -262,12 +290,17 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
      * @return the statement that saves the old value in the table.
      */
     private JCStatement buildStatementToSaveLocalVariableOldValue(JCVariableDecl oldValuesTableFieldDecl, JCVariableDecl paramDecl) {
-        JCExpression paramIdent = factory.Ident(paramDecl);
-        var kryoMethodExpr = javac.Expression(Constants.KRYO_CLONE_METHOD_QUALIFIED_IDENTIFIER);
-        var paramCloneCall = factory.Apply(List.nil(), kryoMethodExpr, List.of(paramIdent));
+        var paramIdent = factory.Ident(paramDecl.sym);
+        paramIdent.setType(paramDecl.type);
+        paramIdent.sym = paramDecl.sym;
+        var paramCloneCall = javac.MethodInvocation(javac.unnamedModule(), javac.Expression(javac.unnamedModule(), "ch.usi.si.codelounge.jsicko.plugin.utils.CloneUtils"),
+                javac.Name("kryoClone"), List.of(paramIdent));
         var nameLiteral = factory.Literal(paramDecl.getName().toString());
         var mapSetParams = List.of(nameLiteral, paramCloneCall);
-        return javac.MethodCall(factory.Ident(oldValuesTableFieldDecl), javac.Name("putValue"), mapSetParams);
+        var oldValuesTableIdent = factory.Ident(oldValuesTableFieldDecl.sym);
+        oldValuesTableIdent.setType(oldValuesTableFieldDecl.type);
+        oldValuesTableIdent.sym = oldValuesTableFieldDecl.sym;
+        return javac.MethodCall(javac.unnamedModule(), oldValuesTableIdent, javac.Name("putValue"), mapSetParams);
     }
 
     /**
@@ -278,11 +311,13 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
     private JCStatement buildStatementToSaveThisOldValue(JCVariableDecl oldValuesTableFieldDecl) {
         return this.state.mapAndGetOnClassDecl((JCClassDecl classDecl) -> {
             var thisType = factory.This(classDecl.sym.type);
-            var kryoMethodExpr = javac.Expression(Constants.KRYO_CLONE_METHOD_QUALIFIED_IDENTIFIER);
-            var cloneCall = factory.Apply(List.nil(), kryoMethodExpr, List.of(thisType));
+            var cloneCall = javac.MethodInvocation(javac.unnamedModule(), javac.Expression(javac.unnamedModule(), "ch.usi.si.codelounge.jsicko.plugin.utils.CloneUtils"),
+                    javac.Name("kryoClone"), List.of(thisType));
             var literal = factory.Literal("this");
             var params = List.of(literal, cloneCall);
-            return javac.MethodCall(factory.Ident(oldValuesTableFieldDecl), javac.Name("putValue"), params);
+            var oldValuesTableIdent = factory.Ident(oldValuesTableFieldDecl.sym);
+            oldValuesTableIdent.setType(oldValuesTableFieldDecl.type);
+            return javac.MethodCall(javac.unnamedModule(), oldValuesTableIdent, javac.Name("putValue"), params);
         });
     }
 
@@ -294,7 +329,10 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
      */
     private JCMethodInvocation buildEnterScopeStatement(MethodSymbol methodSymbol) {
         List<JCExpression> enterParams = List.of(factory.Literal(methodSymbol.toString()));
-        return javac.MethodInvocation(factory.Ident(this.state.oldValuesTableFieldDeclByMethodType()), javac.Name("enter"), enterParams);
+        var oldValuesTableField = this.state.oldValuesTableFieldDeclByMethodType();
+        var oldValuesTableIdent = factory.Ident(oldValuesTableField.sym);
+        oldValuesTableIdent.setType(oldValuesTableField.type);
+        return javac.MethodInvocation(javac.unnamedModule(), oldValuesTableIdent, javac.Name("enter"), enterParams);
     }
 
     /**
@@ -303,7 +341,10 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
      * @return the leave scope statement.
      */
     private JCMethodInvocation buildLeaveScopeStatement() {
-        return javac.MethodInvocation(factory.Ident(this.state.oldValuesTableFieldDeclByMethodType()), javac.Name("leave"));
+        var oldValuesTableField = this.state.oldValuesTableFieldDeclByMethodType();
+        var oldValuesTableIdent = factory.Ident(oldValuesTableField.sym);
+        oldValuesTableIdent.setType(oldValuesTableField.type);
+        return javac.MethodInvocation(javac.unnamedModule(), oldValuesTableIdent, javac.Name("leave"));
     }
 
     /**
@@ -316,7 +357,10 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
                 /* define old and static old values table */
                 var oldField = declareOldValuesTableField(false);
-                declareOldValuesTableField(true);
+
+                if(this.state.currentClassCanHaveStaticDecls()) {
+                    declareOldValuesTableField(true);
+                }
 
                 /* Override @old */
                 var typeVar = javac.freshObjectTypeVar(null);
@@ -330,16 +374,42 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
                 var overriddenOldMethodSymbol = new MethodSymbol(Flags.PUBLIC, javac.Name(Constants.INSTANCE_OLD_METHOD_IDENTIFIER_STRING), overriddenOldMethodType, classDecl.sym);
 
-                var literal = factory.Ident(javac.Name("x0"));
+                this.state.setCurrentOldMethodSymbol(overriddenOldMethodSymbol);
+
+                var x0VarSymbol = new VarSymbol(Flags.PARAMETER,
+                        javac.Name("x0"), javac.stringType(), overriddenOldMethodSymbol);
+                x0VarSymbol.adr = 1;
+                var literal = factory.Ident(x0VarSymbol);
+                literal.type = javac.stringType();
+                literal.sym = x0VarSymbol;
                 List<JCExpression> params = List.of(literal);
-                var getCall = javac.MethodInvocation(factory.Ident(oldField), javac.Name("getValue"), params);
+                var oldFieldIdent = factory.Ident(oldField.sym);
+                oldFieldIdent.type = oldField.type;
+                oldFieldIdent.sym = oldField.sym;
+                var getCall = javac.MethodInvocation(javac.unnamedModule(), oldFieldIdent, javac.Name("getValue"), params);
                 var castCall = factory.TypeCast(typeVar.tsym.type, getCall);
                 var returnElemStatement = factory.Return(castCall);
 
-                var overriddenOldMethodBody = factory.Block(0, List.of(returnElemStatement));
+                var checkCall = factory.Unary(Tag.NOT,javac.MethodInvocation(javac.unnamedModule(), oldFieldIdent, javac.Name("containsKey"), params));
+                this.javac.setOperator(checkCall);
+
+                var runtimeExceptionType = javac.runtimeExceptionType();
+                var msg = factory.Literal("[jsicko] values table does not contain key: clause uses old(.) in a pure method");
+                msg.setType(javac.stringType());
+                var init = factory.NewClass(null, List.nil(), javac.Type(runtimeExceptionType), List.of(msg), null);
+                var ctor = javac.retrieveConstructor(javac.unnamedModule(), "java.lang.RuntimeException", javac.stringType());
+                init.constructor = ctor;
+
+                init.setType(runtimeExceptionType);
+
+                var throwStatement = factory.Throw(init);
+
+                JCTree.JCIf checkValueIsDefined = factory.If(checkCall, factory.Block(0, List.of(throwStatement)), factory.Block(0, List.of(returnElemStatement)));
+
+                var overriddenOldMethodBody = factory.Block(0, List.of(checkValueIsDefined));
                 var overriddenOldMethod = factory.MethodDef(overriddenOldMethodSymbol, overriddenOldMethodBody);
 
-                // Strange fix. Do NOT remove this.
+//              // Strange fix. Do NOT remove this.
                 overriddenOldMethod.params.head.sym.adr = 0;
                 overriddenOldMethod.params.last().sym.adr = 1;
 
@@ -360,6 +430,8 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
             var fieldName = (declareTheStaticOne ? Constants.STATIC_OLD_FIELD_IDENTIFIER_STRING : Constants.OLD_FIELD_IDENTIFIER_STRING);
 
             var init = factory.NewClass(null, List.nil(), javac.oldValuesTableTypeExpression(), List.nil(), null);
+            init.constructor = javac.retrieveConstructor(javac.unnamedModule(), OldValuesTable.class.getCanonicalName());
+            init.setType(javac.oldValuesTableTypeExpression().type);
 
             var varSymbol = new VarSymbol(flags,
                     javac.Name(fieldName), javac.oldValuesTableClassType(), classDecl.sym);
@@ -425,10 +497,17 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
                 var exceptionVarSymbol = new VarSymbol(Flags.EFFECTIVELY_FINAL,
                         javac.Name(Constants.THROWN_SYNTHETIC_IDENTIFIER_STRING), exceptionType, methodDecl.sym);
                 var exceptionVariableDecl = factory.VarDef(exceptionVarSymbol, null);
+
                 exceptionVarSymbol.adr = 0;
-                var rethrowStatement = factory.Throw(factory.Ident(javac.Name(Constants.THROWN_SYNTHETIC_IDENTIFIER_STRING)));
-                var assignmentToRaises = factory.Exec(factory.Assign(factory.Ident(javac.Name(Constants.RAISES_SYNTHETIC_IDENTIFIER_STRING)),
-                        factory.Ident(javac.Name(Constants.THROWN_SYNTHETIC_IDENTIFIER_STRING))));
+                var ident = factory.Ident(javac.Name(Constants.THROWN_SYNTHETIC_IDENTIFIER_STRING));
+                ident.setType(exceptionType);
+                ident.sym = exceptionVarSymbol;
+                var rethrowStatement = factory.Throw(ident);
+                var raisesIdent = factory.Ident(javac.Name(Constants.RAISES_SYNTHETIC_IDENTIFIER_STRING));
+                raisesIdent.type = state.currentMethodRaisesVarDecl().get().sym.type;
+                raisesIdent.sym = state.currentMethodRaisesVarDecl().get().sym;
+                var assignmentToRaises = factory.Exec(factory.Assign(raisesIdent,
+                        ident));
                 var block = factory.Block(0, List.of(assignmentToRaises, rethrowStatement));
                 JCCatch exceptionHandler = factory.Catch(exceptionVariableDecl, block);
 
@@ -455,9 +534,15 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
             if (!methodDecl.sym.isConstructor() && !javac.hasVoidReturnType(methodDecl)) {
                 JCLiteral zeroValue = javac.zeroValue(methodDecl.getReturnType().type);
-                var varDef = factory.VarDef(factory.Modifiers(0), javac.Name(Constants.RETURNS_SYNTHETIC_IDENTIFIER_STRING), methodDecl.restype, zeroValue);
-                body.stats = body.stats.prepend(varDef);
+                zeroValue.type = javac.zeroType(methodDecl.getReturnType().type);
 
+                var varSymbol = new VarSymbol(Flags.LocalVarFlags,
+                        javac.Name(Constants.RETURNS_SYNTHETIC_IDENTIFIER_STRING),
+                        methodDecl.getReturnType().type,
+                        methodDecl.sym);
+
+                var varDef = factory.VarDef(varSymbol, zeroValue);
+                body.stats = body.stats.prepend(varDef);
                 state.setCurrentMethodReturnVarDecl(varDef);
             }
         });
@@ -467,11 +552,19 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
      * Declares (but not appends) the synthetic variable used to catch the exception thrown by a method.
      */
     private void declareRaisesValueCatcher() {
-        JCLiteral zeroValue = javac.nullLiteral();
-        var varDef = factory.VarDef(factory.Modifiers(0),
-                javac.Name(Constants.RAISES_SYNTHETIC_IDENTIFIER_STRING), javac.Expression(Throwable.class.getCanonicalName()), zeroValue);
+        this.state.ifMethodDeclPresent((JCMethodDecl methodDecl) -> {
+            JCLiteral zeroValue = javac.nullLiteral();
+            zeroValue.type = javac.botType();
 
-        state.setCurrentMethodRaisesVarDecl(varDef);
+            var varSymbol = new VarSymbol(0,
+                    javac.Name(Constants.RAISES_SYNTHETIC_IDENTIFIER_STRING),
+                    javac.retrieveType(javac.javaBaseModule(), Throwable.class.getCanonicalName()),
+                    methodDecl.sym);
+            var varDef = factory.VarDef(varSymbol, zeroValue);
+            varDef.setType(javac.throwableType());
+            varDef.sym = varSymbol;
+            state.setCurrentMethodRaisesVarDecl(varDef);
+        });
     }
 
     /**
@@ -505,8 +598,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         this.state.ifMethodDeclPresent((JCMethodDecl methodDecl) -> {
             if (shouldAddConditions(conditionType, methodDecl, isMarkedPure, groupedClauses)) {
                 if (groupedClauses.size() > 0) {
-                    state.logNote(methodDecl.pos(),
-                            "For method " + methodDecl.sym + " - creating " + conditionType.toString().toLowerCase() + " checks " + groupedClauses);
+                    state.logNote(methodDecl.pos(), JSickoDiagnostic.ConditionCheckNote(methodDecl.sym, conditionType, groupedClauses));
                 }
 
                 buildConditionsChecker(conditionType, methodDecl, block, groupedClauses);
@@ -528,12 +620,10 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
     private boolean shouldAddConditions(ContractConditionEnum conditionType, JCMethodDecl methodDecl, boolean isMarkedPure, List<List<ConditionClause>> groupedClauses) {
         BooleanSupplier defaultCheck = () -> groupedClauses.size() > 0 && groupedClauses.stream().allMatch((List<ConditionClause> clause) -> clause.size() > 0);
 
-        switch (conditionType) {
-            case INVARIANT:
-                return !isMarkedPure && !methodDecl.sym.isStatic() && defaultCheck.getAsBoolean();
-            default:
-                return defaultCheck.getAsBoolean();
+        if (conditionType == ContractConditionEnum.INVARIANT) {
+            return !isMarkedPure && !methodDecl.sym.isStatic() && defaultCheck.getAsBoolean();
         }
+        return defaultCheck.getAsBoolean();
     }
 
     /**
@@ -576,10 +666,12 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         var checkerVarSymbol = new VarSymbol(0,
                 javac.Name(lowerCaseConditionTypeName + "Checker"),
                 javac.preconditionCheckerType(), owner);
-        checkerVarSymbol.adr = 0;
+//        checkerVarSymbol.adr = 0;
 
-        return factory.VarDef(checkerVarSymbol, factory.Apply(List.nil(),
-                factory.Select(javac.Expression(ConditionChecker.class.getCanonicalName()), javac.Name(checkerConstructorMethodName)), List.nil()));
+        var checkerVar = factory.VarDef(checkerVarSymbol, javac.MethodInvocation(javac.unnamedModule(),
+                javac.Expression(javac.unnamedModule(), ConditionChecker.class.getCanonicalName()), javac.Name(checkerConstructorMethodName)));
+        checkerVar.setType(javac.retrieveType(javac.unnamedModule(), ConditionChecker.class.getCanonicalName()));
+        return checkerVar;
     }
 
     /**
@@ -591,17 +683,28 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
      * @return the list of statements corresponding to the conditions to be added to the checker.
      */
     private List<JCStatement> buildLambdaCalls(JCMethodDecl methodDecl, JCVariableDecl checkerVarDef, List<List<ConditionClause>> conditionGroups) {
+        var isMethodStatic = methodDecl.getModifiers().getFlags().contains(Modifier.STATIC);
+        var allResolved = conditionGroups.stream().allMatch((List<ConditionClause> conditionGroup) -> conditionGroup.stream().allMatch(clause -> {
+            var errors = clause.resolveContractMethod(state.currentClassDecl().get());
+            if (errors.nonEmpty()) {
+                errors.forEach(error -> {
+                    state.logError(methodDecl.pos(), error);
+                });
+                return false;
+            }
+            if (isMethodStatic && !clause.isClauseMethodStatic()) {
+                state.logError(methodDecl.pos(), JSickoDiagnostic.IncompatibleClause(clause, isMethodStatic, methodDecl.getName()));
+            }
+            return true;
+        }));
+
+        if (!allResolved) {
+            return List.nil();
+        }
+
         return conditionGroups.stream().map((List<ConditionClause> conditionGroup) -> {
-            var lambdas = conditionGroup.stream().map((ConditionClause clause) -> {
-                clause.resolveContractMethod(state.currentClassDecl().get());
-                if (!clause.isResolved()) {
-                    state.logError(methodDecl.pos(),clause.getClauseRep() + " not resolved, method not found.");
-                }
-                return (JCExpression) clause.createConditionLambda(methodDecl);
-            }).collect(List.collector());
-
-            return javac.MethodCall(factory.Ident(checkerVarDef), javac.Name("addConditionGroup"), lambdas);
-
+            var lambdas = conditionGroup.stream().map((ConditionClause clause) -> (JCExpression) clause.createConditionLambda(methodDecl)).collect(List.collector());
+            return javac.MethodCall(javac.unnamedModule(), factory.Ident(checkerVarDef), javac.Name("addConditionGroup"), lambdas);
         }).collect(List.collector());
     }
 
@@ -611,7 +714,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
      * @return the check statement.
      */
     private JCStatement buildCheckStatement(JCVariableDecl checkerVarDef) {
-        return javac.MethodCall(factory.Ident(checkerVarDef), javac.Name("check"));
+        return javac.MethodCall(javac.unnamedModule(), factory.Ident(checkerVarDef), javac.Name("check"));
     }
 
     @Override
@@ -620,8 +723,10 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
 
         state.currentMethodReturnVarDecl().ifPresent((JCVariableDecl varDecl) -> {
             if (state.isCurrentMethodDecl(relevantScope.peek())) {
-                var newArg = factory.Assign(factory.Ident(javac.Name(Constants.RETURNS_SYNTHETIC_IDENTIFIER_STRING)), ((JCReturn) node).expr);
-                returnNode.expr = newArg;
+                var returnIdent = factory.Ident(javac.Name(Constants.RETURNS_SYNTHETIC_IDENTIFIER_STRING));
+                returnIdent.type = state.currentMethodReturnVarDecl().get().sym.type;
+                returnIdent.sym = state.currentMethodReturnVarDecl().get().sym;
+                returnNode.expr = factory.Assign(returnIdent, returnNode.expr);
             }
         });
 
@@ -643,14 +748,23 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         var methodInvocation = ((JCMethodInvocation)node);
         var isScopeInStaticMethod = isScopeInStaticMethod(relevantScope);
 
-        if (isScopeInPureMethod(relevantScope) && methodInvocation.meth.toString().equals("old")) {
+        if (isScopeInPureMethod(relevantScope) && methodInvocation.meth.toString().equals("old") ) {
             var paramName = methodInvocation.args.head.toString();
             if (isScopeInStaticMethod) {
-                methodInvocation.meth = factory.Select(javac.Expression(Contract.class.getCanonicalName()),javac.Name(Constants.STATIC_OLD_METHOD_IDENTIFIER_STRING));
+                var mc = javac.MethodInvocation(javac.unnamedModule(), javac.Expression(javac.unnamedModule(), Contract.class.getCanonicalName()), javac.Name(Constants.STATIC_OLD_METHOD_IDENTIFIER_STRING));
+                methodInvocation.meth = mc.meth;
                 methodInvocation.args = methodInvocation.args.prepend(factory.Literal(paramName));
                 methodInvocation.args = methodInvocation.args.prepend(factory.ClassLiteral(getLastMethodInScope(relevantScope).get().sym.enclClass()));
             } else {
-                methodInvocation.meth = factory.Ident(javac.Name(Constants.INSTANCE_OLD_METHOD_IDENTIFIER_STRING));
+                var oldIdent = factory.Ident(javac.Name(Constants.INSTANCE_OLD_METHOD_IDENTIFIER_STRING));
+                if (state.currentOldMethodSymbol().isPresent()) {
+                    oldIdent.sym = state.currentOldMethodSymbol().get();
+                    oldIdent.type = state.currentOldMethodSymbol().get().type;
+                } else {
+                    oldIdent.sym = javac.retrieveMemberFromClassByName(javac.unnamedModule(),Contract.class.getCanonicalName(),Constants.INSTANCE_OLD_METHOD_IDENTIFIER_STRING).get();
+                    oldIdent.type = oldIdent.sym.type;
+                }
+                methodInvocation.meth = oldIdent;
                 methodInvocation.args = methodInvocation.args.prepend(factory.Literal(paramName));
             }
         }

@@ -24,8 +24,11 @@ import com.sun.source.util.JavacTask;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
 import com.sun.tools.javac.api.BasicJavacTask;
+import com.sun.tools.javac.util.JavacMessages;
 
 import java.util.ArrayDeque;
+import java.util.Locale;
+import java.util.ResourceBundle;
 
 public class ContractCompilerTaskListener implements TaskListener {
 
@@ -33,14 +36,25 @@ public class ContractCompilerTaskListener implements TaskListener {
 
     public ContractCompilerTaskListener(JavacTask task) {
         this.task = task;
+        var context = ((BasicJavacTask) task).getContext();
+        var messages = JavacMessages.instance(context);
+        var jsickoBundle = ResourceBundle.getBundle("jsicko");
+        var resourceBundleHelper = new JavacMessages.ResourceBundleHelper() {
+            @Override
+            public ResourceBundle getResourceBundle(Locale locale) {
+                return jsickoBundle;
+            }
+        };
+        messages.add(resourceBundleHelper);
+
     }
 
     @Override
     public void finished(TaskEvent e) {
-        if (e.getKind() != TaskEvent.Kind.ENTER) {
-            return;
+        if (e.getKind() == TaskEvent.Kind.ANALYZE) {
+            e.getCompilationUnit().accept(new ContractCompilerTreeScanner((BasicJavacTask) task), new ArrayDeque<>());
         }
-        e.getCompilationUnit().accept(new ContractCompilerTreeScanner((BasicJavacTask) task), new ArrayDeque<>());
+
     }
 
 }
