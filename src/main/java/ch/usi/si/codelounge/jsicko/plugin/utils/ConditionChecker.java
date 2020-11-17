@@ -30,6 +30,8 @@ import java.util.stream.Collectors;
 
 public final class ConditionChecker {
 
+    private final Supplier<Optional<String>> dummy = () -> Optional.empty();
+
     private static class ConjunctConditionViolationSuppliers {
 
         private final List<Supplier<Optional<String>>> conjunctSuppliers;

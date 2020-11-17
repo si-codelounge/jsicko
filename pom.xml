@@ -6,13 +6,13 @@
 
     <groupId>ch.usi.si.codelounge</groupId>
     <artifactId>jSicko</artifactId>
-    <version>1.0.0-M3-HOTFIX</version>
+    <version>1.0.0-M4</version>
 
     <properties>
         <maven.version>3.3.9</maven.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <jdk.version>1.10</jdk.version>
+        <jdk.version>11</jdk.version>
     </properties>
 
 <distributionManagement>
@@ -44,6 +44,8 @@
                             <arg>jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED</arg>
                             <arg>--add-exports</arg>
                             <arg>jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED</arg>
+                            <arg>--add-exports</arg>
+                            <arg>jdk.compiler/com.sun.tools.javac.jvm=ALL-UNNAMED</arg>
                             <arg>-Xlint:all,-options,-path</arg>
                         </compilerArgs>
                     </configuration>
@@ -55,6 +57,10 @@
                             </goals>
                             <configuration>
                                 <compilerArgs>
+                                    <arg>--add-exports</arg>
+                                    <arg>jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</arg>
+                                    <arg>--add-exports</arg>
+                                    <arg>jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED</arg>
                                     <arg>-Xplugin:JSickoContractCompiler</arg>
                                 </compilerArgs>
 
@@ -89,19 +95,35 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <source>1.10</source>
-                    <target>1.10</target>
+                    <source>${jdk.version}</source>
+                    <target>${jdk.version}</target>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.1.1</version>
+
+                <configuration>
+                    <descriptorRefs>
+                        <descriptorRef>jar-with-dependencies</descriptorRef>
+                    </descriptorRefs>
+                </configuration>
+
+                <executions>
+                    <execution>
+                        <id>make-assembly</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
 
     <dependencies>
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.12</version>
-        </dependency>
         <dependency>
             <groupId>org.jetbrains</groupId>
             <artifactId>annotations</artifactId>
@@ -111,18 +133,18 @@
         <dependency>
             <groupId>com.twitter</groupId>
             <artifactId>chill-java</artifactId>
-            <version>0.9.3</version>
+            <version>0.9.5</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
-            <version>5.1.0</version>
+            <version>[5.1.0,)</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
-            <version>28.1-jre</version>
+            <version>30.0-jre</version>
         </dependency>
     </dependencies>
 
