@@ -6,8 +6,8 @@ variables:
 stages:
   - build
   - test
+  - jdktests
   - mirroring
-
 
 cache:
   paths:
@@ -30,3 +30,15 @@ github_mirroring:
     - git push -f https://$GITHUB_USERNAME:$GITHUB_TOKEN@github.com/si-codelounge/jsicko.git HEAD:master
   only:
     - master
+
+buildon12:
+  image: maven:3-jdk-12
+  stage: jdktests
+  script:
+    - mvn -e -X compile test -Djdk.version=12
+
+buildon13:
+  image: maven:3-jdk-13
+  stage: jdktests
+  script:
+    - mvn -e -X compile test -Djdk.version=13
