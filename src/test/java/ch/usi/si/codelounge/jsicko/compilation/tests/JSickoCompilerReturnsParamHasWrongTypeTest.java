@@ -24,7 +24,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.TestInstance;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-@DisplayName("DIO")
 public class JSickoCompilerReturnsParamHasWrongTypeTest extends JSickoAbstractCompilerErrorTest {
 
     @Override

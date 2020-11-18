@@ -78,7 +78,45 @@ public final class ConditionChecker {
         this.conditionViolationSuppliersGroups.add(new ConjunctConditionViolationSuppliers(conditionGroupViolationSuppliers));
     }
 
+    private static boolean enabled = true;
+
+    private static IdentityHashMap<Object, Boolean> disabledObjects = new IdentityHashMap<>();
+
+    public static void universallyDisable() {
+        ConditionChecker.enabled = false;
+    }
+
+    public static void universallyEnable() {
+        ConditionChecker.enabled = true;
+    }
+
+    public static boolean isUniversallyEnabled() {
+        return ConditionChecker.enabled;
+    }
+
+    public static void disableObjects(Object... objects) {
+        synchronized (disabledObjects) {
+            Arrays.stream(objects).forEach(object -> {
+                disabledObjects.put(object, true);
+            });
+        }
+    }
+
+    public static void enableObjects(Object... objects) {
+        synchronized (disabledObjects) {
+            Arrays.stream(objects).forEach(object -> {
+                disabledObjects.remove(object);
+            });
+        }
+    }
+
     public final void check() throws Contract.ContractConditionViolation {
+        check(null);
+    }
+
+    public final void check(Object thisObject) throws Contract.ContractConditionViolation {
+        if (!enabled || (enabled && thisObject != null && disabledObjects.containsKey(thisObject)))
+            return;
         var groupedViolations = this.conditionViolationSuppliersGroups.stream()
                 .map((ConjunctConditionViolationSuppliers conditionGroup) -> conditionGroup.getFirstViolation())
                 .collect(Collectors.toList());
