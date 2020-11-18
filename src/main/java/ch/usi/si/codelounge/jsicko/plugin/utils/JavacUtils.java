@@ -53,6 +53,7 @@ public final class JavacUtils {
     private final Type _throwableType;
     private final Type _exceptionType;
     private final Type _runtimeExceptionType;
+    private final Type _objectType;
 
     private final Symbol javaUtilCollectionIteratorMethodSymbol;
 
@@ -83,7 +84,7 @@ public final class JavacUtils {
         this._throwableType = retrieveClassSymbol(symtab.java_base, Throwable.class.getCanonicalName()).get().type;
         this._exceptionType = retrieveClassSymbol(symtab.java_base, Exception.class.getCanonicalName()).get().type;
         this._runtimeExceptionType = retrieveClassSymbol(symtab.java_base, RuntimeException.class.getCanonicalName()).get().type;
-
+        this._objectType = retrieveClassSymbol(symtab.java_base, Object.class.getCanonicalName()).get().type;
     }
 
     public TreeMaker getFactory() {
@@ -261,6 +262,8 @@ public final class JavacUtils {
     public Type exceptionType() {
         return _exceptionType;
     }
+
+    public Type objectType() { return _objectType; }
 
     public Type runtimeExceptionType() {
         return _runtimeExceptionType;
@@ -448,4 +451,5 @@ public final class JavacUtils {
         var bType = b.type.isPrimitive() ? b.type : b.erasure(this.types);
         return this.types.isAssignable(aType, bType);
     }
+
 }
