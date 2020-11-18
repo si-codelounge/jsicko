@@ -21,6 +21,9 @@
 package ch.usi.si.codelounge.jsicko.plugin.utils;
 
 import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.Serializer;
+import com.esotericsoftware.kryo.io.Input;
+import com.esotericsoftware.kryo.io.Output;
 
 
 /**
@@ -41,7 +44,8 @@ public final class CloneUtils {
     public static <E> E kryoClone(E object) {
         Kryo kryo = new Kryo();
         kryo.setCopyReferences(true);
-        return kryo.copy(object);
+        E clonedObject = kryo.copy(object);
+        return clonedObject;
     }
 
 
