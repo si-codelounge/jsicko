@@ -196,7 +196,7 @@ public class ConditionClause {
      * @param methodDecl the declaring method, used for reporting purposes.
      * @return a lambda expression representing an optional-string supplier.
      */
-    JCLambda createConditionLambda(JCMethodDecl methodDecl) {
+    JCLambda createConditionLambda(JCVariableDecl checkerVarDef, JCMethodDecl methodDecl) {
 
         var stringBuilderType = javac.retrieveType(javac.javaBaseModule(),"java.lang.StringBuilder");
         var varSymbol = new VarSymbol(0,
@@ -208,12 +208,13 @@ public class ConditionClause {
         init.setType(stringBuilderType);
 
         JCStatement varDef = factory.VarDef(varSymbol, init);
-        var ident = factory.Ident(varSymbol);
-        ident.type = stringBuilderType;
-        ident.sym = varSymbol;
+        var stringBuilderIdent = factory.Ident(varSymbol);
+        stringBuilderIdent.type = stringBuilderType;
+        stringBuilderIdent.sym = varSymbol;
 
-        var stmts = createParamValuesStringExpression(ident, methodDecl, List.of(factory.Literal(this.clauseRep + "; params: ")));
-        var binaryPlus = javac.MethodInvocation(javac.javaBaseModule(), ident, javac.Name("toString"), List.nil());
+
+        var stmts = createParamValuesStringExpression(checkerVarDef, stringBuilderIdent, methodDecl, List.of(factory.Literal(this.clauseRep + "; params: ")));
+        var binaryPlus = javac.MethodInvocation(javac.javaBaseModule(), stringBuilderIdent, javac.Name("toString"), List.nil());
 
         JCStatement optionalOfCall = factory.Return(javac.MethodInvocation(javac.unnamedModule(), javac.Expression(javac.unnamedModule(), "java.util.Optional"), javac.Name("of"),
                 List.of(binaryPlus)));
@@ -301,7 +302,7 @@ public class ConditionClause {
      * @param methodDecl the declaring method, used for reporting purposes.
      * @return a string concatenation expression with local params names and values.
      */
-    private List<JCStatement> createParamValuesStringExpression(JCIdent sb, JCMethodDecl methodDecl, List<JCExpression> prefix) {
+    private List<JCStatement> createParamValuesStringExpression(JCVariableDecl checkerVarDef, JCIdent stringBuilderIdent, JCMethodDecl methodDecl, List<JCExpression> prefix) {
         var factory = javac.getFactory();
 
         var clauseSymbol = resolvedMethodSymbol.get();
@@ -357,7 +358,7 @@ public class ConditionClause {
                 }, (l1,l2) -> l1.appendList(l2)).reverse();
 
 
-        List<JCStatement> sum = reducedLiterals.stream().map((JCExpression elem) -> {
+        List<JCStatement> sum = reducedLiterals.stream().flatMap((JCExpression elem) -> {
             var arg = elem;
             if (!elem.type.toString().equals(javac.stringType().toString())) {
                 if (elem.type instanceof Type.ArrayType) {
@@ -367,10 +368,17 @@ public class ConditionClause {
                     arg = javac.MethodInvocation(javac.javaBaseModule(),
                             javac.Type(javac.stringType()), javac.Name("valueOf"), List.of(elem));
                 }
+
+                var disableChecker = javac.MethodCall(javac.unnamedModule(), factory.Ident(checkerVarDef), javac.Name("disableObjects"), List.of(elem));
+                var enableChecker = javac.MethodCall(javac.unnamedModule(), factory.Ident(checkerVarDef), javac.Name("enableObjects"), List.of(elem));
+                var append = javac.MethodCall(javac.javaBaseModule(),
+                        stringBuilderIdent, javac.Name("append"), List.of(arg));
+                return Stream.of(disableChecker, append, enableChecker);
             }
+
             var append = javac.MethodCall(javac.javaBaseModule(),
-                    sb, javac.Name("append"), List.of(arg));
-            return append;
+                    stringBuilderIdent, javac.Name("append"), List.of(arg));
+            return Stream.of(append);
         }).collect(List.collector());
 
         return sum;

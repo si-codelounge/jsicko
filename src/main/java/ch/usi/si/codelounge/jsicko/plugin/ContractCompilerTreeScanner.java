@@ -641,7 +641,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         if (conditionGroups.size() > 0) {
             var checkerVarDef = createCheckerDeclaration(conditionType, methodDecl.sym);
             var lambdaCalls = buildLambdaCalls(methodDecl, checkerVarDef, conditionGroups);
-            var checkCall = buildCheckStatement(checkerVarDef);
+            var checkCall = buildCheckStatement(methodDecl.sym.owner.type, methodDecl.getModifiers().getFlags().contains(Modifier.STATIC), checkerVarDef);
 
             var conditionBlock = lambdaCalls.prepend(checkerVarDef).append(checkCall);
 
@@ -703,7 +703,7 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
         }
 
         return conditionGroups.stream().map((List<ConditionClause> conditionGroup) -> {
-            var lambdas = conditionGroup.stream().map((ConditionClause clause) -> (JCExpression) clause.createConditionLambda(methodDecl)).collect(List.collector());
+            var lambdas = conditionGroup.stream().map((ConditionClause clause) -> (JCExpression) clause.createConditionLambda(checkerVarDef, methodDecl)).collect(List.collector());
             return javac.MethodCall(javac.unnamedModule(), factory.Ident(checkerVarDef), javac.Name("addConditionGroup"), lambdas);
         }).collect(List.collector());
     }
@@ -713,8 +713,14 @@ class ContractCompilerTreeScanner extends TreeScanner<Void, Deque<Tree>> {
      * @param checkerVarDef the variable declaration of the current condition checker.
      * @return the check statement.
      */
-    private JCStatement buildCheckStatement(JCVariableDecl checkerVarDef) {
-        return javac.MethodCall(javac.unnamedModule(), factory.Ident(checkerVarDef), javac.Name("check"));
+    private JCStatement buildCheckStatement(Type thisType, boolean isStatic, JCVariableDecl checkerVarDef) {
+        if (isStatic) {
+            return javac.MethodCall(javac.unnamedModule(), factory.Ident(checkerVarDef), javac.Name("check"), List.nil());
+        } else {
+            var arg = factory.This(thisType);
+            arg.setType(javac.objectType());
+            return javac.MethodCall(javac.unnamedModule(), factory.Ident(checkerVarDef), javac.Name("check"), List.of(arg));
+        }
     }
 
     @Override
